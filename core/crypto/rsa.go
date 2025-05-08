@@ -5,88 +5,58 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
+	"fmt"
 )
 
-// RSAEncrypt encrypts data using RSA
-func RSAEncrypt(publicKeyPEM []byte, data []byte) ([]byte, error) {
-	// Decode PEM block
-	block, _ := pem.Decode(publicKeyPEM)
-	if block == nil {
-		return nil, errors.New("failed to parse PEM block containing the public key")
+func RsaDecoding(privateKeyPEM []byte, ciphertext []byte) ([]byte, error) {
+	if len(privateKeyPEM) == 0 {
+		return nil, fmt.Errorf("private key PEM is empty")
 	}
-
-	// Parse public key
-	publicKey, err := x509.ParsePKIXPublicKey(block.Bytes)
+	block, rest := pem.Decode(privateKeyPEM)
+	if block == nil || len(rest) > 0 {
+		return nil, fmt.Errorf("failed to decode PEM block")
+	}
+	// Try parsing as PKCS#8 first
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse private key: %v", err)
 	}
-
-	// Convert to RSA public key
-	rsaPublicKey, ok := publicKey.(*rsa.PublicKey)
+	rsaPrivateKey, ok := key.(*rsa.PrivateKey)
 	if !ok {
-		return nil, errors.New("not an RSA public key")
+		return nil, fmt.Errorf("parsed key is not an RSA private key")
 	}
-
-	// Encrypt data
-	encrypted, err := rsa.EncryptPKCS1v15(rand.Reader, rsaPublicKey, data)
+	if len(ciphertext) == 0 {
+		return nil, fmt.Errorf("ciphertext is empty")
+	}
+	decrypted, err := rsa.DecryptPKCS1v15(rand.Reader, rsaPrivateKey, ciphertext)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decryption failed: %v", err)
 	}
-
-	return encrypted, nil
-}
-
-// RSADecrypt decrypts data using RSA
-func RSADecrypt(privateKeyPEM []byte, data []byte) ([]byte, error) {
-	// Decode PEM block
-	block, _ := pem.Decode(privateKeyPEM)
-	if block == nil {
-		return nil, errors.New("failed to parse PEM block containing the private key")
-	}
-
-	// Parse private key
-	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err != nil {
-		return nil, err
-	}
-
-	// Decrypt data
-	decrypted, err := rsa.DecryptPKCS1v15(rand.Reader, privateKey, data)
-	if err != nil {
-		return nil, err
-	}
-
 	return decrypted, nil
 }
 
-// GenerateRSAKeyPair generates an RSA key pair
-func GenerateRSAKeyPair(bits int) ([]byte, []byte, error) {
-	// Generate key pair
-	privateKey, err := rsa.GenerateKey(rand.Reader, bits)
-	if err != nil {
-		return nil, nil, err
+func RsaEnconding(publicKeyPEM []byte, content []byte) ([]byte, error) {
+	if len(publicKeyPEM) == 0 {
+		return nil, fmt.Errorf("public key PEM is empty")
 	}
-
-	// Extract public key
-	publicKey := &privateKey.PublicKey
-
-	// Encode private key to PEM
-	privateKeyBytes := x509.MarshalPKCS1PrivateKey(privateKey)
-	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: privateKeyBytes,
-	})
-
-	// Encode public key to PEM
-	publicKeyBytes, err := x509.MarshalPKIXPublicKey(publicKey)
-	if err != nil {
-		return nil, nil, err
+	block, rest := pem.Decode(publicKeyPEM)
+	if block == nil || len(rest) > 0 {
+		return nil, fmt.Errorf("failed to decode PEM block")
 	}
-	publicKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PUBLIC KEY",
-		Bytes: publicKeyBytes,
-	})
-
-	return publicKeyPEM, privateKeyPEM, nil
+	publicKey, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse public key: %v", err)
+	}
+	rsaPublicKey, ok := publicKey.(*rsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("public key is not an RSA public key")
+	}
+	if len(content) == 0 {
+		return nil, fmt.Errorf("content to encrypt is empty")
+	}
+	encrypted, err := rsa.EncryptPKCS1v15(rand.Reader, rsaPublicKey, content)
+	if err != nil {
+		return nil, fmt.Errorf("encryption failed: %v", err)
+	}
+	return encrypted, nil
 }

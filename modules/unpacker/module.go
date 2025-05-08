@@ -1,14 +1,10 @@
 package unpacker
-
 import (
 	"fmt"
 	"os"
 	"strings"
-
 	"github.com/simplified_c2/module"
 )
-
-// Module represents the unpacker module
 type Module struct {
 	Name        string
 	Description string
@@ -16,8 +12,6 @@ type Module struct {
 	Author      string
 	unpacker    *Unpacker
 }
-
-// NewModule creates a new unpacker module instance
 func NewModule() *Module {
 	return &Module{
 		Name:        "unpacker",
@@ -27,8 +21,6 @@ func NewModule() *Module {
 		unpacker:    NewUnpacker(UnpackerConfig{}),
 	}
 }
-
-// GetInfo returns information about the module
 func (m *Module) GetInfo() *module.ModuleInfo {
 	return &module.ModuleInfo{
 		Name:        m.Name,
@@ -60,13 +52,9 @@ func (m *Module) GetInfo() *module.ModuleInfo {
 		},
 	}
 }
-
-// Initialize initializes the module
 func (m *Module) Initialize() error {
 	return nil
 }
-
-// ExecuteCommand executes a command
 func (m *Module) ExecuteCommand(command string, args []string) (interface{}, error) {
 	switch command {
 	case "scan":
@@ -80,13 +68,13 @@ func (m *Module) ExecuteCommand(command string, args []string) (interface{}, err
 			return nil, fmt.Errorf("invalid process ID")
 		}
 		
-		// Configure the unpacker for scanning
+		
 		m.unpacker.Config = UnpackerConfig{
 			TargetProcess: pid,
 			Verbose:       true,
 		}
 		
-		// Create a temporary directory for output
+		
 		tempDir, err := os.MkdirTemp("", "unpacker-scan-*")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create temp directory: %v", err)
@@ -95,7 +83,7 @@ func (m *Module) ExecuteCommand(command string, args []string) (interface{}, err
 		
 		m.unpacker.Config.OutputPath = tempDir + "/temp_unpacked"
 		
-		// Scan the process
+		
 		isPacked, err := m.Scan(pid)
 		if err != nil {
 			return nil, err
@@ -120,7 +108,7 @@ func (m *Module) ExecuteCommand(command string, args []string) (interface{}, err
 		
 		outputPath := args[1]
 		
-		// Unpack the process
+		
 		outputFile, err := m.Unpack(pid, outputPath)
 		if err != nil {
 			return nil, err
@@ -135,13 +123,13 @@ func (m *Module) ExecuteCommand(command string, args []string) (interface{}, err
 		
 		filePath := args[0]
 		
-		// Analyze the file
+		
 		analysis, err := m.Analyze(filePath)
 		if err != nil {
 			return nil, err
 		}
 		
-		// Format the analysis results
+		
 		var result strings.Builder
 		result.WriteString(fmt.Sprintf("Analysis of %s:\n", filePath))
 		
@@ -177,16 +165,14 @@ func (m *Module) ExecuteCommand(command string, args []string) (interface{}, err
 		return nil, fmt.Errorf("unknown command: %s", command)
 	}
 }
-
-// Scan checks if a process is potentially packed
 func (m *Module) Scan(pid int) (bool, error) {
-	// Configure the unpacker for scanning only
+	
 	m.unpacker.Config = UnpackerConfig{
 		TargetProcess: pid,
 		Verbose:       false,
 	}
 	
-	// Create a temporary directory for output
+	
 	tempDir, err := os.MkdirTemp("", "unpacker-scan-*")
 	if err != nil {
 		return false, fmt.Errorf("failed to create temp directory: %v", err)
@@ -195,71 +181,69 @@ func (m *Module) Scan(pid int) (bool, error) {
 	
 	m.unpacker.Config.OutputPath = tempDir + "/temp_unpacked"
 	
-	// Attempt to scan the process
+	
 	err = m.unpacker.ScanProcess()
 	if err != nil {
-		// If we get "no packed content found", it means the process is not packed
+		
 		if err.Error() == "no packed content found" {
 			return false, nil
 		}
 		return false, err
 	}
 	
-	// If we got here, we found packed content
+	
 	return true, nil
 }
-
-// Unpack attempts to unpack a process and save the unpacked binary
 func (m *Module) Unpack(pid int, outputPath string) (string, error) {
-	// Configure the unpacker
+	
 	m.unpacker.Config = UnpackerConfig{
 		TargetProcess: pid,
 		OutputPath:    outputPath,
 		Verbose:       true,
 	}
 	
-	// Attempt to unpack the process
+	
 	err := m.unpacker.ScanProcess()
 	if err != nil {
 		return "", fmt.Errorf("unpacking failed: %v", err)
 	}
 	
-	// Analyze the unpacked binary
+	
 	analysis, err := m.unpacker.AnalyzeUnpackedBinary()
 	if err != nil {
 		return outputPath, fmt.Errorf("unpacking succeeded but analysis failed: %v", err)
 	}
 	
-	// If the binary might still be packed, try a second pass
+	
 	if analysis["possibly_still_packed"].(bool) {
 		fmt.Println("Binary may still be packed, attempting second pass...")
 		
-		// Create a new unpacker for the second pass
+		
 		secondPassConfig := UnpackerConfig{
-			TargetProcess: -1, // Not scanning a process this time
+			TargetProcess: -1, 
 			OutputPath:    outputPath + ".2nd_pass",
 			Verbose:       true,
 		}
 		
 		secondUnpacker := NewUnpacker(secondPassConfig)
 		
-		// Load the first-pass unpacked binary
+		
 		firstPassData, err := os.ReadFile(outputPath)
 		if err != nil {
 			return outputPath, fmt.Errorf("failed to read first-pass binary: %v", err)
 		}
 		
-		// Create a memory region from the first-pass binary
+		
 		region := MemoryRegion{
 			Address:     0,
 			Size:        uint64(len(firstPassData)),
-			Permissions: 0x7, // rwx
+			Permissions: 0x7, 
 			Content:     firstPassData,
 		}
 		
 		secondUnpacker.MemoryMaps = append(secondUnpacker.MemoryMaps, region)
 		
-		// Try to unpack the first-pass binary
+		
 		unpacked, err := secondUnpacker.unpackRegion(firstPassData)
 		if err == nil && len(unpacked) > 0 {
 			secondUnpacker.UnpackedBin = unpacked
@@ -272,19 +256,17 @@ func (m *Module) Unpack(pid int, outputPath string) (string, error) {
 	
 	return outputPath, nil
 }
-
-// Analyze performs analysis on a binary file
 func (m *Module) Analyze(filePath string) (map[string]interface{}, error) {
-	// Read the file
+	
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %v", err)
 	}
 	
-	// Create a temporary unpacker for analysis
+	
 	tempUnpacker := NewUnpacker(UnpackerConfig{})
 	tempUnpacker.UnpackedBin = data
 	
-	// Analyze the binary
+	
 	return tempUnpacker.AnalyzeUnpackedBinary()
 }

