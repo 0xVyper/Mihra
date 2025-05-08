@@ -1,4 +1,5 @@
 package system
+
 import (
 	"bytes"
 	"fmt"
@@ -8,11 +9,13 @@ import (
 	"strings"
 	"unicode"
 )
+
 type CommandExecutor struct {
 	terminal string
 	argument string
-	commands map[string]func(string) ([]byte, error) 
+	commands map[string]func(string) ([]byte, error)
 }
+
 func NewCommandExecutor() *CommandExecutor {
 	var terminal, argument string
 	if runtime.GOOS == "windows" {
@@ -27,7 +30,7 @@ func NewCommandExecutor() *CommandExecutor {
 		argument: argument,
 		commands: make(map[string]func(string) ([]byte, error)),
 	}
-	
+
 	ce.commands["whoami"] = func(_ string) ([]byte, error) {
 		return []byte(os.Getenv("USER")), nil
 	}
@@ -55,11 +58,11 @@ func (ce *CommandExecutor) Execute(command string) ([]byte, error) {
 	if len(cmdParts) == 0 {
 		return []byte("Empty command"), nil
 	}
-	
+
 	if handler, ok := ce.commands[cmdParts[0]]; ok {
 		return handler(strings.Join(cmdParts[1:], " "))
 	}
-	
+
 	var output []byte
 	var err error
 	if strings.HasPrefix(cleanedData, "cd ") {

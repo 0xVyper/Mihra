@@ -1,16 +1,17 @@
 package module
+
 import (
 	"errors"
 	"fmt"
 	"plugin"
 	"sync"
 )
+
 type ModuleInterface interface {
-	
 	GetInfo() *ModuleInfo
-	
+
 	Initialize() error
-	
+
 	ExecuteCommand(command string, args []string) (interface{}, error)
 }
 type ModuleInfo struct {
@@ -31,6 +32,7 @@ type ModuleRegistry struct {
 	modules map[string]func() ModuleInterface
 	mutex   sync.RWMutex
 }
+
 func NewModuleRegistry() *ModuleRegistry {
 	return &ModuleRegistry{
 		modules: make(map[string]func() ModuleInterface),
@@ -59,11 +61,13 @@ func (r *ModuleRegistry) ListModules() []string {
 	}
 	return modules
 }
+
 type ModuleManager struct {
 	Registry *ModuleRegistry
 	modules  map[string]ModuleInterface
 	mutex    sync.RWMutex
 }
+
 func NewModuleManager(registry *ModuleRegistry) *ModuleManager {
 	return &ModuleManager{
 		Registry: registry,
@@ -73,22 +77,22 @@ func NewModuleManager(registry *ModuleRegistry) *ModuleManager {
 func (m *ModuleManager) LoadModule(name string) (ModuleInterface, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	if mod, ok := m.modules[name]; ok {
 		return mod, nil
 	}
-	
+
 	factory, err := m.Registry.GetModule(name)
 	if err != nil {
 		return nil, err
 	}
-	
+	fmt.Println(name)
 	mod := factory()
-	
+
 	if err := mod.Initialize(); err != nil {
 		return nil, fmt.Errorf("failed to initialize module: %v", err)
 	}
-	
+
 	m.modules[name] = mod
 	return mod, nil
 }
@@ -124,51 +128,55 @@ func (m *ModuleManager) ListModules() []string {
 	}
 	return modules
 }
+
 type ModuleLoader struct {
 	Manager *ModuleManager
 }
+
 func NewModuleLoader(manager *ModuleManager) *ModuleLoader {
 	return &ModuleLoader{
 		Manager: manager,
 	}
 }
 func (l *ModuleLoader) LoadModuleFromFile(path string) (string, error) {
-	
+
 	p, err := plugin.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("failed to open plugin: %v", err)
 	}
-	
+
 	sym, err := p.Lookup("Module")
 	if err != nil {
 		return "", fmt.Errorf("failed to find Module symbol: %v", err)
 	}
-	
+
 	mod, ok := sym.(ModuleInterface)
 	if !ok {
 		return "", errors.New("Module symbol is not a ModuleInterface")
 	}
-	
+
 	info := mod.GetInfo()
 	if info == nil {
 		return "", errors.New("module info is nil")
 	}
-	
+
 	l.Manager.Registry.RegisterModule(info.Name, func() ModuleInterface {
 		return mod
 	})
-	
+
 	_, err = l.Manager.LoadModule(info.Name)
 	if err != nil {
 		return "", fmt.Errorf("failed to load module: %v", err)
 	}
 	return info.Name, nil
 }
+
 type ModuleSystem struct {
 	Registry *ModuleRegistry
 	Manager  *ModuleManager
 	Loader   *ModuleLoader
 }
+
 func NewModuleSystem() *ModuleSystem {
 	registry := NewModuleRegistry()
 	manager := NewModuleManager(registry)

