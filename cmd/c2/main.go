@@ -3,15 +3,18 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
+
 	"github.com/simplified_c2/core/connector"
 	"github.com/simplified_c2/core/security"
 	"github.com/simplified_c2/module"
 	"github.com/simplified_c2/modules/evasion"
+	"github.com/simplified_c2/modules/sessions"
 	"github.com/simplified_c2/modules/shell_anon"
 	"github.com/simplified_c2/modules/unpacker"
-	"os"
-	"strconv"
-	"strings"
 )
 
 func main() {
@@ -230,10 +233,15 @@ func main() {
 	}
 }
 func registerBuiltinModules(moduleSystem *module.ModuleSystem) {
-
-	evasionModule := evasion.NewModule()
-	moduleSystem.Registry.RegisterModule("evasion", func() module.ModuleInterface {
-		return evasionModule
+	if runtime.GOOS == "linux" {
+		evasionModule := evasion.NewModule()
+		moduleSystem.Registry.RegisterModule("evasion", func() module.ModuleInterface {
+			return evasionModule
+		})
+	}
+	sessionModule := sessions.NewModule()
+	moduleSystem.Registry.RegisterModule("sessions", func() module.ModuleInterface {
+		return sessionModule
 	})
 	unpackerModule := unpacker.NewModule()
 	moduleSystem.Registry.RegisterModule("unpacker", func() module.ModuleInterface {

