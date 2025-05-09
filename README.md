@@ -1,4 +1,4 @@
-# Athenas
+# Mihra
 🇧🇷 - Uma reverse shell construída em ruby para o testes de penetração. Agora para ambientes onde pode ser utilizado a linguagem interpretada e compilada 
 Utiliza um sistema onde a porta de conexão é fornecida pelo alvo, e não pelo atacante, possibilitando o uso de proxy's e conexões em intervalos, devido ao loop de execução.
 
