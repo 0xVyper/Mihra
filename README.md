@@ -1,5 +1,6 @@
-# Mihra
-![cape]
+<h1 align="center">📀 Mihra</h1>
+
+<p align="center"><img src="image.png"/></p>
 ## Overview
 
 The Simplified C2 Framework is a modular, security-focused command and control framework designed for easy integration with other systems. This framework provides essential security features, shell functionality, and malware analysis capabilities while maintaining a clean, streamlined architecture.
