@@ -1,7 +1,10 @@
 <h1 align="center">📀 Mihra</h1>
 
 <p align="center"><img src="image.png"/></p>
+
 ## Overview
+
+[For detailed documentation](https://deepwiki.com/0xVyper/Mihra)
 
 The Simplified C2 Framework is a modular, security-focused command and control framework designed for easy integration with other systems. This framework provides essential security features, shell functionality, and malware analysis capabilities while maintaining a clean, streamlined architecture.
 
@@ -43,7 +46,7 @@ The Simplified C2 Framework is a modular, security-focused command and control f
 The framework is organized into the following components:
 
 ```
-simplified_c2/
+mihra/
 ├── cmd/
 │   ├── c2/              # Main C2 application
 │   └── secure_shell/    # Secure shell executable
@@ -61,10 +64,10 @@ simplified_c2/
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/simplified_c2.git
+git clone https://github.com/0xVyper/mihra.git
 
 # Build the main C2 application
-cd simplified_c2
+cd mihra
 go build -o c2 ./cmd/c2
 
 # Build the secure shell executable
@@ -172,28 +175,28 @@ The shell anonymization module provides features for hiding shell activities:
 
 # Get anonymization tips
 ./c2 --module shell_anon get_tips all
+
+
+#################################################
+# FOR ONGOING CONNECTIONS THROUGH SECURE_SHELL  #
+#################################################
+> shell_anon (triggers default configuration to hide)
+
 ```
 
-### Unpacker Module
+### Session Module
 
-The unpacker module provides features for unpacking and analyzing packed malware:
+The session module provides features for orchestrate multi-machine connenctions:
 
-- Detection of common packers (UPX, Dyamorphine)
-- Unpacking capabilities
-- Binary analysis tools
-- Suspicious pattern detection
+- Creating and handshake sessions
+- send commands to N targets.
+- Control current session secrets.
+- hide traffic through two-layer encryption.
 
 #### Example Usage
 
 ```bash
-# Scan a process for packed content
-./c2 --module unpacker scan <pid>
-
-# Unpack a process and save the unpacked binary
-./c2 --module unpacker unpack <pid> /path/to/output
-
-# Analyze a binary file
-./c2 --module unpacker analyze /path/to/binary
+> /sessions
 ```
 
 ## Secure Shell
@@ -229,8 +232,8 @@ The Simplified C2 Framework is designed to be easily integrated with other C2 fr
 
 ```go
 import (
-    "github.com/simplified_c2/core/security"
-    "github.com/simplified_c2/modules/shell_anon"
+    "github.com/mihra/core/security"
+    "github.com/mihra/modules/shell_anon"
 )
 
 func main() {
@@ -272,7 +275,7 @@ package mymodule
 
 import (
     "fmt"
-    "github.com/simplified_c2/module"
+    "github.com/mihra/module"
 )
 
 type Module struct {
@@ -327,5 +330,24 @@ func (m *Module) ExecuteCommand(command string, args []string) (interface{}, err
 
 The Simplified C2 Framework provides a clean, modular architecture for command and control operations with a focus on security, anonymization, and malware analysis. Its design makes it easy to integrate with other C2 frameworks while maintaining essential functionality.
 
+---
 
-https://deepwiki.com/0xVyper/Mihra
+## Cotribuiting 🚀
+
+Check it out our community server!
+
+```
+#just filtering bots
+aHR0cHM6Ly9kaXNjb3JkLmdnLzh0YTRHSzlBCg==
+```
+
+---
+## License
+
+This framework is licensed under the GNU Affero General Public License v3.0 (AGPLv3). You are free to use, modify, and distribute this software, provided that any derivative works are also licensed under AGPLv3 and their source code is shared, including for network-accessed use (e.g., server deployments).
+
+Ethical Use Disclaimer: This framework is intended for lawful security research and penetration testing only. The author is not responsible for any misuse or illegal activities conducted with this software.
+
+See the LICENSE file for full details.
+
+--
