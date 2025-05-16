@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/simplified_c2/module"
+	"github.com/0xvyper/mihra/module"
 )
 
 // EvasionConfig holds configuration for process-hiding operations

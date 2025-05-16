@@ -3,7 +3,7 @@ package sessions
 import (
 	"sync"
 
-	"github.com/simplified_c2/core/connector"
+	"github.com/0xvyper/mihra/core/connector"
 )
 
 type SessionInfo struct {

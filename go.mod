@@ -1,3 +1,3 @@
-module github.com/simplified_c2
+module github.com/0xvyper/Mihra
 
 go 1.18

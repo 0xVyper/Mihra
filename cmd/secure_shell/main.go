@@ -13,12 +13,11 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/0xvyper/mihra/core/crypto"
+	"github.com/0xvyper/mihra/module"
+	"github.com/0xvyper/mihra/modules/sessions"
+	"github.com/0xvyper/mihra/shell"
 	"github.com/peterh/liner"
-
-	"github.com/simplified_c2/core/crypto"
-	"github.com/simplified_c2/module"
-	"github.com/simplified_c2/modules/sessions"
-	"github.com/simplified_c2/shell"
 
 	_ "embed"
 )

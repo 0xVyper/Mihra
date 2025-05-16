@@ -15,10 +15,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/simplified_c2/core/crypto"
-	"github.com/simplified_c2/module"
-	"github.com/simplified_c2/modules/evasion"
-	"github.com/simplified_c2/modules/shell_anon"
+	"github.com/0xvyper/mihra/core/crypto"
+	"github.com/0xvyper/mihra/module"
+	"github.com/0xvyper/mihra/modules/evasion"
+	"github.com/0xvyper/mihra/modules/shell_anon"
 
 	_ "embed"
 )

@@ -228,8 +228,8 @@ The Simplified C2 Framework is designed to be easily integrated with other C2 fr
 
 ```go
 import (
-    "github.com/simplified_c2/core/security"
-    "github.com/simplified_c2/modules/shell_anon"
+    "github.com/0xvyper/mihra/core/security"
+    "github.com/0xvyper/mihra/modules/shell_anon"
 )
 
 func main() {
@@ -271,7 +271,7 @@ package mymodule
 
 import (
     "fmt"
-    "github.com/simplified_c2/module"
+    "github.com/0xvyper/mihra/module"
 )
 
 type Module struct {

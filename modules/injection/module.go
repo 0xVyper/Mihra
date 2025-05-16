@@ -2,7 +2,8 @@ package injection
 
 import (
 	"fmt"
-	"github.com/simplified_c2/module"
+
+	"github.com/0xvyper/mihra/module"
 )
 
 // Module represents the process injection module
