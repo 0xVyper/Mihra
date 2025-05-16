@@ -6,7 +6,7 @@
 
 [For detailed documentation](https://deepwiki.com/0xVyper/Mihra)
 
-The Simplified C2 Framework is a modular, security-focused command and control framework designed for easy integration with other systems. This framework provides essential security features, shell functionality, and malware analysis capabilities while maintaining a clean, streamlined architecture.
+The Simplified C2 Framework is a modular, security-focused command and control framework designed for easy integration with other systems. This framework provides essential security features, shell functionality, with capabilities while maintaining a clean, streamlined architecture.
 
 ## Key Features
 
@@ -32,11 +32,6 @@ The Simplified C2 Framework is a modular, security-focused command and control f
   - File hiding and secure deletion
   - Command obfuscation
 
-- **Malware Analysis**
-  - Unpacking capabilities for common packers
-  - Binary analysis tools
-  - Suspicious pattern detection
-
 - **Modular Architecture**
   - Easy extension with custom modules
   - Clean integration points for other frameworks
@@ -56,7 +51,7 @@ mihra/
 │   └── security/        # Security features
 ├── modules/
 │   ├── shell_anon/      # Shell anonymization
-│   └── unpacker/        # Malware unpacking
+│   └── sessions/        #Session management
 └── module/              # Module system
 ```
 
@@ -100,11 +95,6 @@ go build -o secure_shell ./cmd/secure_shell
 ./c2 --anonymize --module shell_anon setup
 ```
 
-### Unpacking Malware
-
-```bash
-./c2 --module unpacker unpack <pid> <output-path>
-```
 
 ### Listing Available Modules
 
@@ -328,7 +318,7 @@ func (m *Module) ExecuteCommand(command string, args []string) (interface{}, err
 
 ## Conclusion
 
-The Simplified C2 Framework provides a clean, modular architecture for command and control operations with a focus on security, anonymization, and malware analysis. Its design makes it easy to integrate with other C2 frameworks while maintaining essential functionality.
+The Simplified C2 Framework provides a clean, modular architecture for command and control operations with a focus on security, anonymization, and session orchestration. Its design makes it easy to integrate with other C2 frameworks while maintaining essential functionality.
 
 ---
 
