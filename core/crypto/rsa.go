@@ -16,14 +16,10 @@ func RsaDecoding(privateKeyPEM []byte, ciphertext []byte) ([]byte, error) {
 	if block == nil || len(rest) > 0 {
 		return nil, fmt.Errorf("failed to decode PEM block")
 	}
-	// Try parsing as PKCS#8 first
-	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	
+	rsaPrivateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %v", err)
-	}
-	rsaPrivateKey, ok := key.(*rsa.PrivateKey)
-	if !ok {
-		return nil, fmt.Errorf("parsed key is not an RSA private key")
+		return nil, fmt.Errorf("failed to parse PKCS#1 private key: %v", err)
 	}
 	if len(ciphertext) == 0 {
 		return nil, fmt.Errorf("ciphertext is empty")

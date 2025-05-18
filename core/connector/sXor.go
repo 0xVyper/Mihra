@@ -1,20 +1,24 @@
 package connector
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	crand "crypto/rand"
 	"fmt"
-	"math/rand"
+	"io"
+	"sync"
 	"time"
 )
 
-const KEY int = 7153234
-
 type SecureBytes struct {
-	key           int
-	realValue     []byte
-	fakeValue     []byte
+	encKey        []byte 
+	iv            []byte 
+	encValue      []byte 
+	fakeValue     []byte 
 	initialized   bool
 	hackDetecting bool
 	observers     []Observer
+	mutex         sync.RWMutex 
 }
 
 type Observer interface {
@@ -30,19 +34,37 @@ func (w *Watcher) Update(value string) {
 }
 
 func NewBytes(value []byte) *SecureBytes {
+	
+	key := make([]byte, 32) 
+	iv := make([]byte, 16)  
+
+	_, err := io.ReadFull(crand.Reader, key)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to generate secure key: %v", err))
+	}
+
+	_, err = io.ReadFull(crand.Reader, iv)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to generate secure IV: %v", err))
+	}
+
 	s := &SecureBytes{
-		key:         KEY,
-		realValue:   value,
+		encKey:      key,
+		iv:          iv,
 		fakeValue:   value,
 		initialized: false,
 	}
-	s.Apply()
+
+	s.Apply(value)
 	return s
 }
 
-func (s *SecureBytes) Apply() *SecureBytes {
+func (s *SecureBytes) Apply(value []byte) *SecureBytes {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
 	if !s.initialized {
-		s.realValue = s.XOR(s.realValue, s.key)
+		s.encValue = s.encrypt(value)
 		s.initialized = true
 	}
 	return s
@@ -52,37 +74,84 @@ func (s *SecureBytes) Get() []byte {
 	return s.Decrypt()
 }
 
-func (s *SecureBytes) XOR(value []byte, key int) []byte {
-	res := make([]byte, len(value))
-	for j, v := range value {
-		res[j] = v ^ byte(key)
+func (s *SecureBytes) encrypt(value []byte) []byte {
+	block, err := aes.NewCipher(s.encKey)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create cipher: %v", err))
 	}
-	return res
+
+	
+	ctr := cipher.NewCTR(block, s.iv)
+
+	
+	encrypted := make([]byte, len(value))
+	ctr.XORKeyStream(encrypted, value)
+
+	return encrypted
 }
 
-func (s *SecureBytes) SetKey(key int) {
-	s.key = key
+func (s *SecureBytes) decrypt(value []byte) []byte {
+	block, err := aes.NewCipher(s.encKey)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create cipher: %v", err))
+	}
+
+	
+	ctr := cipher.NewCTR(block, s.iv)
+
+	
+	decrypted := make([]byte, len(value))
+	ctr.XORKeyStream(decrypted, value)
+
+	return decrypted
 }
 
 func (s *SecureBytes) Set(value []byte) *SecureBytes {
-	s.realValue = value
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
 	s.initialized = false
-	return s.Apply()
+	return s.Apply(value)
 }
 
 func (s *SecureBytes) RandomizeKey() {
-	rand.Seed(time.Now().UnixNano())
-	s.realValue = s.Decrypt()
-	s.key = rand.Intn(int(^uint(0) >> 1))
-	s.realValue = s.XOR(s.realValue, s.key)
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	
+	decrypted := s.decrypt(s.encValue)
+
+	
+	newKey := make([]byte, 32)
+	_, err := io.ReadFull(crand.Reader, newKey)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to generate secure key: %v", err))
+	}
+
+	
+	newIV := make([]byte, 16)
+	_, err = io.ReadFull(crand.Reader, newIV)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to generate secure IV: %v", err))
+	}
+
+	
+	s.encKey = newKey
+	s.iv = newIV
+
+	
+	s.encValue = s.encrypt(decrypted)
 }
 
 func (s *SecureBytes) Decrypt() []byte {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
 	if !s.initialized {
 		return []byte{}
 	}
 
-	decryptedValue := s.XOR(s.realValue, s.key)
+	decryptedValue := s.decrypt(s.encValue)
 
 	if s.hackDetecting && !isEqual(decryptedValue, s.fakeValue) {
 		s.NotifyAll(fmt.Sprintf("hack attempt detected: %v", s.fakeValue))
@@ -92,6 +161,9 @@ func (s *SecureBytes) Decrypt() []byte {
 }
 
 func (s *SecureBytes) AddWatcher(observer Observer) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
 	s.observers = append(s.observers, observer)
 	s.hackDetecting = true
 }
@@ -115,10 +187,12 @@ func isEqual(a, b []byte) bool {
 	if len(a) != len(b) {
 		return false
 	}
+
+	
+	var result byte = 0
 	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
+		result |= a[i] ^ b[i]
 	}
-	return true
+
+	return result == 0
 }

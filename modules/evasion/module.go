@@ -13,25 +13,21 @@ import (
 	"github.com/0xvyper/mihra/module"
 )
 
-// EvasionConfig holds configuration for process-hiding operations
 type EvasionConfig struct {
 	TargetPID int
 	Verbose   bool
 }
 
-// Evasion is the core component for process-hiding techniques
 type Evasion struct {
 	Config EvasionConfig
 }
 
-// NewEvasion creates a new Evasion instance
 func NewEvasion(config EvasionConfig) *Evasion {
 	return &Evasion{
 		Config: config,
 	}
 }
 
-// Module implements module.ModuleInterface for process hiding
 type Module struct {
 	Name        string
 	Description string
@@ -40,7 +36,6 @@ type Module struct {
 	hider       *Evasion
 }
 
-// NewModule creates a new EvasionModule instance
 func NewModule() *Module {
 	return &Module{
 		Name:        "",
@@ -51,7 +46,6 @@ func NewModule() *Module {
 	}
 }
 
-// GetInfo returns the module's metadata
 func (m *Module) GetInfo() *module.ModuleInfo {
 	return &module.ModuleInfo{
 		Name:        m.Name,
@@ -96,7 +90,6 @@ func (m *Module) GetInfo() *module.ModuleInfo {
 	}
 }
 
-// Initialize performs module setup
 func (m *Module) Initialize() error {
 	if os.Geteuid() != 0 && m.hider.Config.Verbose {
 		fmt.Println("Warning: mount, cgroup, and seccomp require root privileges")
@@ -104,7 +97,6 @@ func (m *Module) Initialize() error {
 	return nil
 }
 
-// ExecuteCommand runs the specified hiding technique
 func (m *Module) ExecuteCommand(command string, args []string) (interface{}, error) {
 	switch command {
 	case "proc":
@@ -161,7 +153,6 @@ func (m *Module) ExecuteCommand(command string, args []string) (interface{}, err
 	}
 }
 
-// ProcHide lists /proc entries, excluding the target PID
 func (p *Evasion) ProcHide() (string, error) {
 	if p.Config.Verbose {
 		fmt.Printf("Listing processes, hiding PID %d\n", p.Config.TargetPID)
@@ -182,7 +173,6 @@ func (p *Evasion) ProcHide() (string, error) {
 	return result, nil
 }
 
-// MountNamespace runs a process in a new mount namespace
 func (p *Evasion) MountNamespace() (string, error) {
 	if p.Config.Verbose {
 		fmt.Println("Starting process in new mount namespace (requires root)")
@@ -204,7 +194,6 @@ func (p *Evasion) MountNamespace() (string, error) {
 	return result, nil
 }
 
-// CgroupNamespace runs a process in a new cgroup namespace
 func (p *Evasion) CgroupNamespace() (string, error) {
 	if p.Config.Verbose {
 		fmt.Println("Starting process in new cgroup namespace (requires root)")
@@ -226,7 +215,6 @@ func (p *Evasion) CgroupNamespace() (string, error) {
 	return result, nil
 }
 
-// ForkBomb spawns multiple processes to clutter listings
 func (p *Evasion) ForkBomb() (string, error) {
 	if p.Config.Verbose {
 		fmt.Println("Starting fork bomb (limited to 100 processes)")
@@ -243,9 +231,7 @@ func (p *Evasion) ForkBomb() (string, error) {
 	return "Spawned 100 processes to clutter process listings", nil
 }
 
-// Seccomp runs a process with a seccomp filter
 
-// isNumeric checks if a string is numeric
 func isNumeric(s string) bool {
 	_, err := strconv.Atoi(s)
 	return err == nil
