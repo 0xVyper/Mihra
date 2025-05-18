@@ -27,5 +27,5 @@ func AddSession(s SessionInfo) {
 func ListSessions() []SessionInfo {
 	mu.Lock()
 	defer mu.Unlock()
-	return append([]SessionInfo(nil), sessions...) // cópia segura
+	return append([]SessionInfo(nil), sessions...) 
 }
